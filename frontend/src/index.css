@@ -57,12 +57,11 @@ body{
 }
 
 .card{
-  background: linear-gradient(135deg, var(--kpmg-light-200) 0%, var(--kpmg-light-150) 55%, var(--kpmg-light-100) 100%);
-  border:1px solid var(--kpmg-border); border-radius:12px; padding:14px;
-  box-shadow: 0 8px 22px rgba(30, 58, 138, 0.10), inset 0 0 0 1px rgba(30,58,138,0.08);
+  background:#ffffff; border:1px solid var(--border); border-radius:12px; padding:14px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
   transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
 }
-.card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(30, 58, 138, 0.14), inset 0 0 0 1px rgba(30,58,138,0.10); filter: saturate(1.05) brightness(1.02); }
+.card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10); filter: saturate(1.02) brightness(1.01); }
 
 .sidebar .agent{
   display:block; padding:10px; border:1px solid var(--border); border-radius:10px; background:#f8fafc;
@@ -85,7 +84,7 @@ body{
 .input{ padding:10px; border:1px solid var(--border); border-radius:10px; width:100%; background:#fff; }
 .panel-stack{ height:100%; overflow:auto; display:grid; gap:16px; }
 .panel-card-title{ font-weight:700; margin-bottom:10px; }
-.details{ border:1px dashed var(--kpmg-border); border-radius:10px; padding:8px; background: linear-gradient(135deg, var(--kpmg-light-200) 0%, var(--kpmg-light-150) 55%, var(--kpmg-light-100) 100%); }
+.details{ border:1px dashed var(--border); border-radius:10px; padding:8px; background:#ffffff; }
 .details:hover{ filter: saturate(1.04) brightness(1.01); }
 
 /* Fancy navbar + buttons */
@@ -109,17 +108,13 @@ body{
 .btn-glow:active{ transform: translateY(0); }
 
 /* Card header gradients */
-.card-header-gradient{
-  background: linear-gradient(90deg, var(--kpmg-light-200) 0%, var(--kpmg-light-150) 100%);
-  color:var(--kpmg-blue-800);
-}
+.card-header-gradient{ background:#ffffff; color:var(--text); }
 
 /* Agent cards hover/interactive */
 .agent-card{
-  background: linear-gradient(135deg, var(--kpmg-light-200) 0%, var(--kpmg-light-150) 55%, var(--kpmg-light-100) 100%) !important;
-  border: 1px solid var(--kpmg-border) !important;
-  box-shadow: inset 0 0 0 1px rgba(30,58,138,0.06) !important;
+  background:#ffffff !important; border: 1px solid var(--border) !important;
+  box-shadow: inset 0 0 0 1px rgba(15,23,42,0.04) !important;
   transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
 }
-.agent-card:hover{ transform: translateY(-2px); box-shadow: 0 12px 26px rgba(30, 58, 138, 0.16) !important; filter: saturate(1.06) brightness(1.02); }
+.agent-card:hover{ transform: translateY(-2px); box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12) !important; filter: saturate(1.01) brightness(1.01); }
 .summary{ cursor:pointer; color:var(--primary); font-weight:600; }
