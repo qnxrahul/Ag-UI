@@ -1,0 +1,9 @@
+Section,Key,Value
+Spend,amount,22000.0
+Spend,category,ops
+Spend,requester,Alex
+Spend,approver,Priya
+Spend,required_steps,CertifyInvoice;ManagerApproval
+Delegation,Spending,Alex
+Delegation,Payment,Priya
+Delegation,BankReconciliation,Sam

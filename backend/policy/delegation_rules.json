@@ -1,0 +1,44 @@
+{
+  "delegation": {
+    "roles": [
+      "Spending",
+      "Payment",
+      "BankReconciliation"
+    ],
+    "constraints": [
+      {
+        "code": "ConflictRolePair",
+        "message": "Spending and Payment must be held by different people.",
+        "pair": [
+          "Spending",
+          "Payment"
+        ]
+      },
+      {
+        "code": "ReconIndependence",
+        "message": "Bank Reconciliation must be prepared by someone different from Payment.",
+        "pair": [
+          "BankReconciliation",
+          "Payment"
+        ]
+      }
+    ],
+    "acting_rules": {
+      "require_dates": true
+    },
+    "evidence": [
+      {
+        "key": "delegation.role.Spending",
+        "snippet": "Sub-Module 5.6: SAMPLE Policy/Procedure for Spending Authority"
+      },
+      {
+        "key": "delegation.role.Payment",
+        "snippet": "Sub-Module 5.1: SAMPLE Cheque Signing Authorities Procedure"
+      },
+      {
+        "key": "delegation.role.BankReconciliation",
+        "snippet": "Bank Reconciliations"
+      }
+    ]
+  }
+}

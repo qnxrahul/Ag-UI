@@ -1,0 +1,7 @@
+{
+  "ops": [
+    { "op": "add", "path": "/panels/0", "value": "SpendingTriage" },
+    { "op": "replace", "path": "/spend/amount", "value": 18000 },
+    { "op": "replace", "path": "/spend/category", "value": "ops" }
+  ]
+}

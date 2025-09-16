@@ -1,0 +1,9 @@
+Section,Key,Value
+Spend,amount,2000.0
+Spend,category,ops
+Spend,requester,Anikait
+Spend,approver,Anikait
+Spend,required_steps,CertifyInvoice;ManagerApproval
+Delegation,Spending,Anikait
+Delegation,Payment,Sam
+Delegation,BankReconciliation,Priya

@@ -1,0 +1,243 @@
+{
+  "spending_rules": {
+    "tiers": [
+      {
+        "name": "Sole Sourcing",
+        "condition": {
+          "field": "amount",
+          "op": "<=",
+          "value": 20000
+        },
+        "required_steps": [
+          "Justification for sole sourcing must accompany the contract."
+        ],
+        "citations": [
+          "chunk_1015",
+          "chunk_1017"
+        ]
+      },
+      {
+        "name": "Competitive Bidding",
+        "condition": {
+          "field": "amount",
+          "op": ">",
+          "value": 20000
+        },
+        "required_steps": [
+          "RFP Assessment Team makes a recommendation.",
+          "Contract referred to the Community/Organization Finance Committee."
+        ],
+        "citations": [
+          "chunk_1019",
+          "chunk_1024"
+        ]
+      }
+    ],
+    "exceptions": [],
+    "notes": "",
+    "ambiguous": false,
+    "candidates": []
+  },
+  "delegation_rules": {
+    "roles": [
+      "Signing Officers",
+      "Directors/Managers",
+      "Payment Authorities",
+      "Cheque Signing Authority",
+      "Spending Authority",
+      "Approval Authority"
+    ],
+    "role_evidence": [
+      {
+        "role": "Signing Officers",
+        "citations": [
+          "chunk_58",
+          "chunk_875"
+        ],
+        "quotes": [
+          "Signing Officers"
+        ]
+      },
+      {
+        "role": "Directors/Managers",
+        "citations": [
+          "chunk_58",
+          "chunk_875"
+        ],
+        "quotes": [
+          "Directors/Managers Responsibilities"
+        ]
+      },
+      {
+        "role": "Payment Authorities",
+        "citations": [
+          "chunk_58",
+          "chunk_875"
+        ],
+        "quotes": [
+          "Payment Authorities"
+        ]
+      },
+      {
+        "role": "Cheque Signing Authority",
+        "citations": [
+          "chunk_1176"
+        ],
+        "quotes": [
+          "Cheque Signing Authority"
+        ]
+      },
+      {
+        "role": "Spending Authority",
+        "citations": [
+          "chunk_1176"
+        ],
+        "quotes": [
+          "Spending Authority"
+        ]
+      },
+      {
+        "role": "Approval Authority",
+        "citations": [
+          "chunk_1176"
+        ],
+        "quotes": [
+          "Approval Authority"
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "code": "ConflictRolePair",
+        "pair": [
+          "Cheque Signing Authority",
+          "Spending Authority"
+        ],
+        "message": "Cheque signing and spending authorities may not be exercised by the same person.",
+        "citations": [
+          "chunk_497"
+        ],
+        "quotes": [
+          "cheque signing and spending authorities may not be exercised by the same person"
+        ]
+      }
+    ],
+    "allows": [
+      {
+        "pair": [
+          "Cheque Signing Authority",
+          "Payment Authorities"
+        ],
+        "message": "Cheque signing and payment authorities may be exercised by the same person.",
+        "citations": [
+          "chunk_497"
+        ],
+        "quotes": [
+          "cheque signing and payment authorities may be exercised by the same person"
+        ]
+      }
+    ],
+    "ambiguous": false
+  },
+  "approval_chain_rules": {
+    "levels": [],
+    "triggers": [
+      {
+        "when": {
+          "instrument": "cheque"
+        },
+        "add": [
+          "two authorized signing officers"
+        ],
+        "citations": [
+          "chunk_669"
+        ],
+        "quotes": [
+          "the cheque by two authorized signing officers in accordance with the Financial Signing Authorities."
+        ]
+      }
+    ],
+    "ambiguous": true,
+    "candidates": [
+      {
+        "reason": "No specific numeric approval levels were provided in the text.",
+        "citations": [
+          "chunk_260"
+        ],
+        "quotes": [
+          "is required to validate Financial Signing Authorities to incumbents of all positions to which Financial Signing Authorities have been delegated, as documented in the Instrument of Delegation."
+        ]
+      }
+    ]
+  },
+  "control_rules": {
+    "travel_rules": [],
+    "bank_recon_rules": [
+      {
+        "code": "BankReconDueWithinDays",
+        "label": "Bank reconciliation must be performed within 2 days",
+        "logic": {
+          "kind": "days_between",
+          "from": "statement_date",
+          "to": "recon_completed_date",
+          "op": "<=",
+          "value": 2
+        },
+        "citations": [
+          "chunk_747"
+        ],
+        "quotes": [
+          "The bank reconciliation shall be performed within 2 days of receipt of the"
+        ]
+      }
+    ],
+    "credit_card_rules": [
+      {
+        "code": "CardReconMonthlyPreparation",
+        "label": "Monthly credit card reconciliation must be prepared",
+        "logic": {
+          "kind": "bool_equals",
+          "field": "preparer_has_spending_authority",
+          "value": true
+        },
+        "citations": [
+          "chunk_760"
+        ],
+        "quotes": [
+          "A monthly credit card reconciliation shall be prepared by a designated"
+        ]
+      }
+    ],
+    "ambiguous": false,
+    "notes": ""
+  },
+  "exception_rules": {
+    "exception_policies": [
+      {
+        "name": "Sole source procurement",
+        "when": {
+          "keyword": "sole source",
+          "amount": null
+        },
+        "requires": {
+          "approvals": [
+            "Manager/Director"
+          ],
+          "documentation": [
+            "sole source justification"
+          ],
+          "reporting": []
+        },
+        "citations": [
+          "chunk_1017",
+          "chunk_1016"
+        ],
+        "quotes": [
+          "a sole source justification must accompany the contract which states why this",
+          "a Manager/Director may sole source to an individual or firm."
+        ]
+      }
+    ],
+    "ambiguous": false
+  }
+}

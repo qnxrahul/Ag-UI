@@ -1,0 +1,29 @@
+Section,Key,Value
+Spending (panel),amount,20001
+Spending (panel),category,ops
+Spending (panel),required_steps,RFP Assessment Team makes a recommendation.;Contract referred to the Community/Organization Finance Committee.
+Roles & SoD,assign:Signing Officers,Anikait
+Roles & SoD,assign:Directors/Managers Responsibilities,Amit
+Roles & SoD,assign:Payment Authorities,Anikait
+Roles & SoD,assign:Signing Authorities,Alex
+Roles & SoD,assign:Cheque Signing Authority,Anikait
+Roles & SoD,assign:Spending Authority,Anikait
+Roles & SoD,assign:Approval Authority,Alex
+Roles & SoD,violations_count,1
+Roles & SoD,violation,role ↔ conflict
+Approval Chain,amount,20000
+Approval Chain,instrument,purchase
+Approval Chain,approver_chain,
+Approval Chain,levels_found,0
+Approval Chain,triggers_found,1
+Control Checklists,bank_count,1
+Control Checklists,bank_items,"{'code': 'BankReconDueWithinDays', 'label': 'Bank reconciliation shall be performed within 2 days', 'status': 'pass', 'citations': ['chunk_747'], 'quotes': ['The bank reconciliation shall be performed within 2 days of receipt of the']}"
+Control Checklists,credit_count,1
+Control Checklists,credit_items,"{'code': 'CardReconMonthlyPreparation', 'label': 'Monthly credit card reconciliation shall be prepared', 'status': 'pass', 'citations': ['chunk_760'], 'quotes': ['A monthly credit card reconciliation shall be prepared by a designated']}"
+Exceptions & Waivers,keywords,sole source
+Exceptions & Waivers,amount,
+Exceptions & Waivers,currency,
+Exceptions & Waivers,approvals_summary,PASS:1 | FAIL:0 | UNKNOWN:0
+Exceptions & Waivers,approvals_items,Manager/Director
+Exceptions & Waivers,documentation_summary,PASS:1 | FAIL:0 | UNKNOWN:0
+Exceptions & Waivers,documentation_items,sole source justification

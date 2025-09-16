@@ -1,0 +1,5 @@
+{
+  "ops": [
+    { "op": "replace", "path": "/delegation/assignments/Payment", "value": "Alex" }
+  ]
+}

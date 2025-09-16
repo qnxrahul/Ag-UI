@@ -1,0 +1,6 @@
+{
+  "ops": [
+    { "op": "replace", "path": "/delegation/people", "value": ["Alex", "Priya", "Sam"] },
+    { "op": "replace", "path": "/delegation/roles",  "value": ["Spending", "Payment", "BankReconciliation"] }
+  ]
+}

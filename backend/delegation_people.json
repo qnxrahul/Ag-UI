@@ -1,0 +1,5 @@
+{
+  "ops": [
+    { "op": "replace", "path": "/delegation/people", "value": ["Alex", "Priya", "Sam"] }
+  ]
+}

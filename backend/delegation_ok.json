@@ -1,0 +1,7 @@
+{
+  "ops": [
+    { "op": "add", "path": "/delegation/assignments/Spending", "value": "Alex" },
+    { "op": "add", "path": "/delegation/assignments/Payment",  "value": "Priya" },
+    { "op": "add", "path": "/delegation/assignments/BankReconciliation", "value": "Sam" }
+  ]
+}

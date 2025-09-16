@@ -1,0 +1,5 @@
+{
+  "ops": [
+    { "op": "replace", "path": "/spend/category", "value": "operations" }
+  ]
+}

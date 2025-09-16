@@ -1,0 +1,6 @@
+Section,Key,Value
+Spend,amount,
+Spend,category,
+Spend,requester,
+Spend,approver,
+Spend,required_steps,
