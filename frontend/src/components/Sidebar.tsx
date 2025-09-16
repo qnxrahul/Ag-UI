@@ -15,16 +15,16 @@ export default function Sidebar({ onRun }: { onRun: (prompt: string) => void }) 
     <Card className="shadow-sm" style={{ position: "sticky", top: 8, maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}>
       <Card.Body>
         <Card.Title>Agents</Card.Title>
-        <Row className="g-2">
+        <Row className="g-1">
           {AGENTS.map((a: AgentItem) => (
             <Col key={a.title} xs={12} sm={6} md={12}>
               <Card className="border-0 agent-card">
-                <Card.Body className="d-flex align-items-center justify-content-between">
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{a.title}</div>
-                    <div style={{ fontSize: 12, color: "#6b7280" }}>{a.desc}</div>
+                <Card.Body className="d-flex align-items-center justify-content-between py-2 px-2">
+                  <div className="text-truncate" style={{ minWidth: 0 }}>
+                    <div className="text-truncate" style={{ fontWeight: 600, fontSize: 13, lineHeight: "16px" }}>{a.title}</div>
+                    <div className="text-muted d-none d-lg-block text-truncate" style={{ fontSize: 11, lineHeight: "14px", maxWidth: 220 }}>{a.desc}</div>
                   </div>
-                  <Button size="sm" variant="primary" onClick={() => onRun(a.prompt)}>
+                  <Button size="sm" variant="primary" style={{ padding: "4px 10px", borderRadius: 9999 }} onClick={() => onRun(a.prompt)}>
                     Run
                   </Button>
                 </Card.Body>
