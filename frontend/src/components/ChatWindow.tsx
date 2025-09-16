@@ -38,8 +38,8 @@ export default function ChatWindow() {
   }
 
   return (
-    <Card className="shadow-sm">
-      <Card.Header className="d-flex align-items-center gap-2">
+    <Card className="shadow-sm" style={{ background: "linear-gradient(180deg, #e0e7ff, #dbeafe)" }}>
+      <Card.Header className="d-flex align-items-center gap-2 card-header-gradient">
         <span>Conversational Assistant</span>
         <Badge bg="secondary">Beta</Badge>
       </Card.Header>
