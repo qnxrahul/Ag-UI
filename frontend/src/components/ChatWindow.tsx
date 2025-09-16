@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
 import { BASE_URL } from "../agui/bridge";
+import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
 
-export default function ChatWindow({ onRun }: { onRun: (prompt: string) => void }) {
+export default function ChatWindow() {
   const [msgs, setMsgs] = useState<ChatMsg[]>([
     { role: "assistant", text: "Hi! I’m your Policy Assistant. Ask for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions — or ask a question about the document." }
   ]);
@@ -37,23 +38,31 @@ export default function ChatWindow({ onRun }: { onRun: (prompt: string) => void 
   }
 
   return (
-    <div className="card chat">
-      <div className="panel-card-title">Conversational Assistant</div>
-      <div ref={listRef} className="chat-log">
-        {msgs.map((m, i) => (
-          <div key={i} className={`msg ${m.role}`}>{m.text}</div>
+    <Card className="shadow-sm">
+      <Card.Header className="d-flex align-items-center gap-2">
+        <span>Conversational Assistant</span>
+        <Badge bg="secondary">Beta</Badge>
+      </Card.Header>
+      <Card.Body style={{ height: 360, overflowY: "auto" }} ref={listRef as any}>
+        {msgs.map((m: ChatMsg, i: number) => (
+          <div key={i} className={`mb-2 ${m.role === "user" ? "text-end" : "text-start"}`}>
+            <span className={`badge ${m.role === "user" ? "bg-primary" : "bg-light text-dark"}`}>
+              {m.text}
+            </span>
+          </div>
         ))}
-      </div>
-      <div className="chat-input">
-        <input
-          className="input"
-          placeholder="Type a request… e.g., “spending checker”"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => (e.key === "Enter" ? (send(input), setInput("")) : null)}
-        />
-        <button className="btn primary" onClick={() => (send(input), setInput(""))}>Send</button>
-      </div>
-    </div>
+      </Card.Body>
+      <Card.Footer>
+        <InputGroup>
+          <Form.Control
+            placeholder="Type a request… e.g., “spending checker”"
+            value={input}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setInput(e.target.value)}
+            onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => (e.key === "Enter" ? (send(input), setInput("")) : null)}
+          />
+          <Button onClick={() => (send(input), setInput(""))}>Send</Button>
+        </InputGroup>
+      </Card.Footer>
+    </Card>
   );
 }

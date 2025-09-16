@@ -6,6 +6,7 @@ import ExceptionsTracker from "./ExceptionsTracker";
 import FormSpending from "./FormSpending";
 import ApprovalChain from "./ApprovalChain";
 import ControlChecklists from "./ControlChecklists";
+import { Card } from "react-bootstrap";
 
 export default function PanelHost(props: {
   state: AppState;
@@ -20,10 +21,10 @@ export default function PanelHost(props: {
   const renderOne = (id: string, cfg: any) => {
     if (!cfg) return null;
     const wrap = (child: React.ReactNode) => (
-      <div key={id} className="card">
-        <div className="panel-card-title">{cfg.title || "Panel"}</div>
-        {child}
-      </div>
+      <Card key={id} className="mb-3 shadow-sm">
+        <Card.Header>{cfg.title || "Panel"}</Card.Header>
+        <Card.Body>{child}</Card.Body>
+      </Card>
     );
     switch (cfg.type) {
       case "roles_sod":
@@ -44,9 +45,7 @@ export default function PanelHost(props: {
   return (
     <div className="panel-stack">
       {panelIds.length === 0 ? (
-        <div className="card" style={{ color: "#6b7280" }}>
-          No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.
-        </div>
+        <Card className="p-3 text-muted">No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.</Card>
       ) : (
         panelIds.map((id) => renderOne(id, lookup(id)))
       )}
