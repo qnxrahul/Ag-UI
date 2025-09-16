@@ -1,4 +1,4 @@
-import { Card, ListGroup, Button } from "react-bootstrap";
+import { Card, Button, Row, Col } from "react-bootstrap";
 
 type AgentItem = { title: string; prompt: string; desc: string };
 
@@ -15,17 +15,23 @@ export default function Sidebar({ onRun }: { onRun: (prompt: string) => void }) 
     <Card className="shadow-sm">
       <Card.Body>
         <Card.Title>Agents</Card.Title>
-        <ListGroup variant="flush">
+        <Row className="g-2">
           {AGENTS.map((a: AgentItem) => (
-            <ListGroup.Item key={a.title} className="d-flex align-items-center justify-content-between">
-              <div>
-                <div style={{ fontWeight: 600 }}>{a.title}</div>
-                <div style={{ fontSize: 12, color: "#6b7280" }}>{a.desc}</div>
-              </div>
-              <Button size="sm" variant="primary" onClick={() => onRun(a.prompt)}>Run</Button>
-            </ListGroup.Item>
+            <Col key={a.title} xs={12} sm={6} md={12}>
+              <Card className="border-0" style={{ background: "linear-gradient(180deg,#f8fafc,#eef2ff)" }}>
+                <Card.Body className="d-flex align-items-center justify-content-between">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{a.title}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>{a.desc}</div>
+                  </div>
+                  <Button size="sm" variant="primary" onClick={() => onRun(a.prompt)}>
+                    Run
+                  </Button>
+                </Card.Body>
+              </Card>
+            </Col>
           ))}
-        </ListGroup>
+        </Row>
       </Card.Body>
     </Card>
   );
