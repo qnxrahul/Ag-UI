@@ -170,8 +170,8 @@ export default function ApprovalChain(
                 marginTop: 8,
               }}
             >
-              <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
-                <strong>{c.key}</strong>
+              <div style={{ display:"flex", alignItems:"center", gap:8, fontSize: 12, color: "#666", marginBottom: 4 }}>
+                <span style={{ display:"inline-block", padding:"2px 6px", borderRadius:999, background:"#e0e7ff", color:"#1e3a8a", border:"1px solid #c7d2fe", fontWeight:600 }}>{c.key}</span>
                 {typeof c.page === "number" && (
                   <span style={{ marginLeft: 8, color: "#355" }}>p.{c.page}</span>
                 )}
