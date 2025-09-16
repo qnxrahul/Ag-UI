@@ -219,11 +219,12 @@ ADDITIONAL CONSTRAINTS:
             cited.add(cid)
 
     citations = []
+    id_to_page = {c.id: c.page for c in (all_chunks or [])}
     for cid in cited:
         snippet = next((c.text for c in base_chunks if c.id == cid), "")
         if not snippet and all_chunks is not base_chunks:
             snippet = next((c.text for c in all_chunks if c.id == cid), "")
-        citations.append({"key": "approval.evidence", "snippet": snippet})
+        citations.append({"key": "approval.evidence", "snippet": snippet, "page": id_to_page.get(cid), "chunk_id": cid})
 
     panel_id = f"Panel:approval_chain:{doc_id}"
     patches = [

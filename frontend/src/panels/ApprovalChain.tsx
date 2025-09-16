@@ -172,6 +172,12 @@ export default function ApprovalChain(
             >
               <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
                 <strong>{c.key}</strong>
+                {typeof c.page === "number" && (
+                  <span style={{ marginLeft: 8, color: "#355" }}>p.{c.page}</span>
+                )}
+                {c.chunk_id && (
+                  <span style={{ marginLeft: 6, color: "#7a7a7a" }}>({c.chunk_id})</span>
+                )}
               </div>
               <div style={{ whiteSpace: "pre-wrap" }}>{c.snippet || "(no snippet)"}</div>
             </div>

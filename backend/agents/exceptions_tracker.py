@@ -109,9 +109,10 @@ def run_exceptions_tracker(doc_id: str, index: DocIndex, user_query: str) -> Dic
         for rid in row.get("citations", []) or []:
             cited_ids.add(rid)
     citations = []
+    id_to_page = {c.id: c.page for c in chunks}
     for rid in cited_ids:
         snippet = next((c.text for c in chunks if c.id == rid), "")
-        citations.append({"key": "exceptions.evidence", "snippet": snippet})
+        citations.append({"key": "exceptions.evidence", "snippet": snippet, "page": id_to_page.get(rid), "chunk_id": rid})
 
     suggestions = {
         "approvals": sorted({a for pol in (result.get("exception_policies") or []) for a in (pol.get("requires", {}).get("approvals") or [])}),

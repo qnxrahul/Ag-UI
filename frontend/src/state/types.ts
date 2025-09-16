@@ -24,7 +24,7 @@ export type AppState = {
     acting: Array<Record<string, any>>;
   };
   violations: Array<{ code: string; message: string; path?: string }>;
-  citations: Array<{ key: string; href?: string; snippet?: string }>;
+  citations: Array<{ key: string; href?: string; snippet?: string; page?: number; chunk_id?: string }>;
 };
 
 export type PatchOp = {

@@ -268,9 +268,10 @@ ADDITIONAL CONSTRAINTS:
             for rid in row.get("citations") or []: cited_ids.add(rid)
 
     citations = []
+    id_to_page = {c.id: c.page for c in chunks}
     for rid in cited_ids:
         snippet = next((c.text for c in chunks if c.id == rid), "")
-        citations.append({"key": "roles.evidence", "snippet": snippet})
+        citations.append({"key": "roles.evidence", "snippet": snippet, "page": id_to_page.get(rid), "chunk_id": rid})
 
     roles = result.get("roles") or []
     assignments = { r: None for r in roles }
