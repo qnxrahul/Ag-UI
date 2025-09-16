@@ -232,9 +232,9 @@ export default function App() {
 
   return (
     <>
-      <Navbar bg="light" className="mb-2" expand="md">
+      <Navbar className="mb-2 nav-gradient" expand="md" variant="dark">
         <Container fluid>
-          <Navbar.Brand style={{ fontWeight: 700 }}>AG-UI PoC Dashboard</Navbar.Brand>
+          <Navbar.Brand style={{ fontWeight: 800, letterSpacing: 0.2 }}>AG-UI PoC Dashboard</Navbar.Brand>
           <Form className="d-flex align-items-center gap-2">
             <Form.Control
               type="file"
@@ -256,10 +256,10 @@ export default function App() {
               }}
               style={{ maxWidth: 260 }}
             />
-            <Button variant="outline-secondary" size="sm" onClick={softInit}>Initialize</Button>
-            <Button variant="outline-secondary" size="sm" onClick={exportCsv}>Export CSV</Button>
+            <Button className="btn-glow" size="sm" onClick={softInit}>Initialize</Button>
+            <Button className="btn-glow" size="sm" onClick={exportCsv}>Export CSV</Button>
             {lastExportUrl && (
-              <Button as="a" href={lastExportUrl} target="_blank" rel="noreferrer" variant="link" size="sm">
+              <Button as="a" href={lastExportUrl} target="_blank" rel="noreferrer" variant="light" size="sm" style={{ opacity:.9 }}>
                 Download last export
               </Button>
             )}

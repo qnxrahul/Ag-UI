@@ -18,7 +18,7 @@ export default function Sidebar({ onRun }: { onRun: (prompt: string) => void }) 
         <Row className="g-2">
           {AGENTS.map((a: AgentItem) => (
             <Col key={a.title} xs={12} sm={6} md={12}>
-              <Card className="border-0" style={{ background: "linear-gradient(180deg,#f8fafc,#eef2ff)" }}>
+              <Card className="border-0 agent-card">
                 <Card.Body className="d-flex align-items-center justify-content-between">
                   <div>
                     <div style={{ fontWeight: 600 }}>{a.title}</div>

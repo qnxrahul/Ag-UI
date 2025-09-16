@@ -22,7 +22,7 @@ export default function PanelHost(props: {
     if (!cfg) return null;
     const wrap = (child: React.ReactNode) => (
       <Card key={id} className="mb-3 shadow-sm">
-        <Card.Header>{cfg.title || "Panel"}</Card.Header>
+        <Card.Header className="card-header-gradient">{cfg.title || "Panel"}</Card.Header>
         <Card.Body>{child}</Card.Body>
       </Card>
     );
