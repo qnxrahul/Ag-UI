@@ -187,7 +187,7 @@ def run_approval_chain(doc_id: str, index: DocIndex, user_query: str) -> Dict[st
         "approval authority signing officer signing officers financial signing authorities limit threshold up to over not exceeding amount"
     )
 
-    all_chunks = index.all_chunks() if hasattr(index, "all_chunks") else base_chunks
+    all_chunks = index.all_chunks()
     amount_sents = _harvest_amount_candidates(all_chunks)
     amount_cids = {cid for cid, _ in amount_sents}
 
