@@ -1,0 +1,1 @@
+{ "ops": [ { "op": "replace", "path": "/spend/amount", "value": "eighteen" } ] }

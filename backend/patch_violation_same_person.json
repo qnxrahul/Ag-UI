@@ -1,0 +1,6 @@
+{
+  "ops": [
+    { "op": "replace", "path": "/spend/requester", "value": "Alex" },
+    { "op": "replace", "path": "/spend/approver", "value": "Alex" }
+  ]
+}

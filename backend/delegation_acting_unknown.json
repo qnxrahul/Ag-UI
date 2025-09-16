@@ -1,0 +1,5 @@
+{
+  "ops": [
+    { "op": "add", "path": "/delegation/acting/0", "value": { "person": "Dana", "role": "Spending", "from": "2025-09-12", "to": "2025-09-15" } }
+  ]
+}

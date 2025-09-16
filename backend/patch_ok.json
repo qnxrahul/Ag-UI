@@ -1,0 +1,6 @@
+{
+  "ops": [
+    { "op": "replace", "path": "/spend/amount", "value": 18000 },
+    { "op": "replace", "path": "/spend/category", "value": "ops" }
+  ]
+}

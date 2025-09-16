@@ -1,0 +1,45 @@
+{
+  "spend_policy": {
+    "tiers": [
+      {
+        "name": "Under20000",
+        "range": {
+          "min": 0,
+          "max": 19999.99
+        },
+        "requires": [
+          "CertifyInvoice",
+          "ManagerApproval"
+        ]
+      },
+      {
+        "name": "AtOrOver20000",
+        "range": {
+          "min": 20000.0,
+          "max": "inf"
+        },
+        "requires": [
+          "CertifyInvoice",
+          "ManagerApproval",
+          "RFP"
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "code": "SeparationOfDuties",
+        "message": "Requester and Approver must be different for the same spend.",
+        "appliesTo": [
+          "/spend/requester",
+          "/spend/approver"
+        ]
+      }
+    ],
+    "evidence": [
+      {
+        "key": "spend.rfp",
+        "snippet": "2.3  Competitive Bidding"
+      }
+    ]
+  }
+}
