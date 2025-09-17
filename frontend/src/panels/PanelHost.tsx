@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import type { AppState, PatchOp } from "../state/types";
 
 import RolesSoD from "./RolesSoD";
@@ -6,7 +6,7 @@ import ExceptionsTracker from "./ExceptionsTracker";
 import FormSpending from "./FormSpending";
 import ApprovalChain from "./ApprovalChain";
 import ControlChecklists from "./ControlChecklists";
-import { Card, Collapse } from "react-bootstrap";
+import { Accordion } from "react-bootstrap";
 
 export default function PanelHost(props: {
   state: AppState;
@@ -18,49 +18,15 @@ export default function PanelHost(props: {
 
   const lookup = (id: string) => (state.panel_configs as any)?.[id] || null;
 
-  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>({});
-  const toggle = (id: string) => setCollapsedMap((m) => ({ ...m, [id]: !m[id] }));
-
-  // Initialize new panels as collapsed by default; keep existing states
-  useEffect(() => {
-    setCollapsedMap((prev) => {
-      const next: Record<string, boolean> = { ...prev };
-      for (const id of panelIds) {
-        if (next[id] === undefined) next[id] = true;
-      }
-      // optional: remove stale entries
-      for (const k of Object.keys(next)) {
-        if (!panelIds.includes(k)) delete next[k];
-      }
-      return next;
-    });
-  }, [panelIds]);
-
   const renderOne = (id: string, cfg: any) => {
     if (!cfg) return null;
-    const isCollapsible = true;
-    const isCollapsed = !!collapsedMap[id];
-    const caret = isCollapsed ? "▸" : "▾";
-    const headerStyle: React.CSSProperties = isCollapsible ? { cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between" } : {};
-    const Header = (
-      <Card.Header className="card-header-gradient" style={headerStyle} onClick={isCollapsible ? () => toggle(id) : undefined}>
-        <span>{cfg.title || "Panel"}</span>
-        {isCollapsible && <span style={{ fontSize: 14, opacity: 0.8 }}>{caret}</span>}
-      </Card.Header>
-    );
     const wrap = (child: React.ReactNode) => (
-      <Card key={id} className="mb-3 shadow-sm">
-        {Header}
-        {isCollapsible ? (
-          <Collapse in={!isCollapsed}>
-            <div>
-              <Card.Body>{child}</Card.Body>
-            </div>
-          </Collapse>
-        ) : (
-          <Card.Body>{child}</Card.Body>
-        )}
-      </Card>
+      <Accordion.Item key={id} eventKey={id} className="mb-2">
+        <Accordion.Header>{cfg.title || "Panel"}</Accordion.Header>
+        <Accordion.Body>
+          {child}
+        </Accordion.Body>
+      </Accordion.Item>
     );
     switch (cfg.type) {
       case "roles_sod":
@@ -81,9 +47,11 @@ export default function PanelHost(props: {
   return (
     <div className="panel-stack">
       {panelIds.length === 0 ? (
-        <Card className="p-3 text-muted">No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.</Card>
+        <div className="card p-3 text-muted">No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.</div>
       ) : (
-        panelIds.map((id) => renderOne(id, lookup(id)))
+        <Accordion alwaysOpen className="accordion-kpmg">
+          {panelIds.map((id) => renderOne(id, lookup(id)))}
+        </Accordion>
       )}
     </div>
   );

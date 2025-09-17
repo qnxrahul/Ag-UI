@@ -145,3 +145,21 @@ body{
 }
 .agent-card:hover{ transform: translateY(-2px); box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12) !important; filter: saturate(1.01) brightness(1.01); }
 .summary{ cursor:pointer; color:var(--primary); font-weight:600; }
+
+/* Accordion styling to align with KPMG accents */
+.accordion-kpmg .accordion-item{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+.accordion-kpmg .accordion-item + .accordion-item{ margin-top: 10px; }
+.accordion-kpmg .accordion-header .accordion-button{
+  background: linear-gradient(90deg, var(--kpmg-light-200), var(--kpmg-light-150));
+  color: var(--kpmg-blue-800);
+  font-weight: 600;
+}
+.accordion-kpmg .accordion-button:not(.collapsed){
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.05);
+}
+.accordion-kpmg .accordion-body{ background: #ffffff; }
