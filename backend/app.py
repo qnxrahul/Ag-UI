@@ -523,6 +523,29 @@ async def ingest_upload(
         # Do not fail upload on agent errors
         LAST_ERROR = {"type": "ingest_auto_panels", "detail": str(e)}
 
+    # Suggest a guided workflow in chat
+    try:
+        await broadcast(
+            "TOOL_RESULT",
+            {
+                "name": "chat_message",
+                "message": (
+                    "I analyzed your document. Choose a workflow to begin: Control Calendar, "
+                    "Exceptions Tracker, Approval Chain, or Spending Checker."
+                ),
+            },
+        )
+        suggestions = [
+            {"label": "Open Control Calendar", "kind": "chat", "prompt": "control calendar"},
+            {"label": "Open Exceptions Tracker", "kind": "chat", "prompt": "exceptions"},
+            {"label": "Open Approval Chain", "kind": "chat", "prompt": "approval chain"},
+            {"label": "Spending Checker", "kind": "chat", "prompt": "spending checker"},
+            {"label": "Export CSV", "kind": "export"},
+        ]
+        await broadcast("TOOL_RESULT", {"name": "action_items", "items": suggestions})
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "docName": filename,
