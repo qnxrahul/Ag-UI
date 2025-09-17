@@ -38,12 +38,15 @@ export default function ChatWindow() {
   }
 
   return (
-    <Card className="shadow-sm" style={{ background: "#ffffff" }}>
+    <Card
+      className="shadow-sm"
+      style={{ background: "#ffffff", position: "sticky", top: 8, maxHeight: "calc(100vh - 80px)", display: "flex", flexDirection: "column" }}
+    >
       <Card.Header className="d-flex align-items-center gap-2" style={{ background: "#ffffff" }}>
         <span>Conversational Assistant</span>
         <Badge bg="secondary">Beta</Badge>
       </Card.Header>
-      <Card.Body style={{ height: 360, overflowY: "auto" }} ref={listRef as any}>
+      <Card.Body style={{ flex: 1, overflowY: "auto" }} ref={listRef as any}>
         {msgs.map((m: ChatMsg, i: number) => (
           <div key={i} className={`mb-2 ${m.role === "user" ? "text-end" : "text-start"}`}>
             <span className={`badge ${m.role === "user" ? "bg-primary" : "bg-light text-dark"}`}>
