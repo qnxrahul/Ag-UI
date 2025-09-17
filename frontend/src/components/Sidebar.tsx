@@ -12,7 +12,7 @@ const AGENTS: AgentItem[] = [
 
 export default function Sidebar({ onRun }: { onRun: (prompt: string) => void }) {
   return (
-    <Card className="shadow-sm sticky-panel">
+    <Card className="shadow-sm">
       <Card.Body>
         <Card.Title>Agents</Card.Title>
         <Row className="g-1">
