@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import * as AdaptiveCards from "adaptivecards";
 import { BASE_URL } from "../agui/bridge";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
@@ -99,6 +100,67 @@ export default function ChatWindow() {
       setActions(parsed);
       if (!initialActionsRef.current) initialActionsRef.current = parsed;
       setMsgs((m: ChatMsg[]) => [...m, { role: "assistant", text: "Here are some quick actions you can take:" }]);
+      try {
+        const card = new AdaptiveCards.AdaptiveCard();
+        card.version = new AdaptiveCards.Version(1, 5);
+        card.hostConfig = new AdaptiveCards.HostConfig({
+          spacing: { padding: 8 },
+          containerStyles: {
+            default: { backgroundColor: "#FFFFFF" },
+            emphasis: { backgroundColor: "#F2F8FF" }
+          }
+        } as any);
+        card.onExecuteAction = async (action: any) => {
+          const data = (action as any).data || {};
+          const kind = data.kind as string;
+          const prompt = data.prompt as string | undefined;
+          if (kind === "chat" && prompt) {
+            (window as any).__onUserPrompt?.(data.label || prompt);
+            try {
+              await fetch(`${BASE_URL}/chat/ask`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt })
+              });
+            } catch {}
+          } else if (kind === "export") {
+            try {
+              await fetch(`${BASE_URL}/agui/patch`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ops: [{ op: "add", path: "/meta/exportRequested", value: true }] })
+              });
+            } catch {}
+          }
+        };
+
+        const actionsJson = items.map((it) => ({
+          type: "Action.Submit",
+          title: it.label,
+          data: { kind: it.kind, prompt: it.prompt, label: it.label }
+        }));
+
+        card.parse({
+          type: "AdaptiveCard",
+          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+          version: "1.5",
+          body: [
+            { type: "TextBlock", text: "Quick Actions", weight: "Bolder", size: "Medium" },
+            { type: "Container", items: [ { type: "TextBlock", text: "Choose an option below:", isSubtle: true, wrap: true } ], style: "default" }
+          ],
+          actions: actionsJson
+        } as any);
+
+        const rendered = card.render();
+        const host = listRef.current;
+        if (host && rendered) {
+          const wrap = document.createElement("div");
+          wrap.style.marginTop = "6px";
+          wrap.appendChild(rendered);
+          host.appendChild(wrap);
+          host.scrollTo({ top: host.scrollHeight, behavior: "smooth" });
+        }
+      } catch {}
     };
     return () => {
       try { if (w.__onChatMessage) delete w.__onChatMessage; } catch {}
