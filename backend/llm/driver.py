@@ -8,9 +8,18 @@ _CLIENT = None
 # --- OpenRouter defaults (can be overridden by environment vars) ---
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
+OPENROUTER_FALLBACK_MODELS = [
+    m.strip() for m in (os.getenv(
+        "OPENROUTER_FALLBACK_MODELS",
+        "meta-llama/llama-3.1-8b-instruct:free,mistralai/mistral-7b-instruct:free,qwen/qwen2.5-7b-instruct:free"
+    ).split(",")) if m.strip()
+]
 
 def _has_any_api() -> bool:
     return bool(os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"))
+
+def _is_openrouter() -> bool:
+    return bool(os.getenv("OPENROUTER_API_KEY"))
 
 
 def _client() -> OpenAI:
@@ -53,27 +62,41 @@ def generate_json(prompt: str, context: str, schema_hint: str, model: str | None
         return {}
 
     last_err = None
-    # Choose default model based on client in use
-    use_model = model or (OPENROUTER_MODEL if os.getenv("OPENROUTER_API_KEY") else "gpt-4o-mini")
-    for _ in range(max_retries + 1):
-        try:
-            resp = _client().chat.completions.create(
-                model=use_model,
-                messages=[{"role":"system","content":sys}, {"role":"user","content":user}],
-                temperature=0.1,
-            )
-            txt = resp.choices[0].message.content.strip()
+    # Prepare model queue
+    if _is_openrouter():
+        prefer = (model or OPENROUTER_MODEL).strip()
+        queue = [m for m in [prefer] + [m for m in OPENROUTER_FALLBACK_MODELS if m != prefer] if m]
+    else:
+        queue = [model or "gpt-4o-mini"]
+
+    for mdl in queue:
+        for _ in range(max_retries + 1):
             try:
-                if txt.startswith("```"):
-                    txt = re.sub(r"^```[a-z]*\n?", "", txt).rstrip("` \n")
-                data = json.loads(txt)
-                if not isinstance(data, dict):
-                    raise ValueError("Top-level JSON must be an object")
-                return data
-            except Exception as e:
-                last_err = e
-        except Exception as api_err:
-            last_err = api_err
-            # brief delay or immediate retry; here just continue
-            continue
-    raise ValueError(f"LLM did not return valid JSON after retries: {last_err}")
+                resp = _client().chat.completions.create(
+                    model=mdl,
+                    messages=[{"role":"system","content":sys}, {"role":"user","content":user}],
+                    temperature=0.1,
+                )
+                txt = resp.choices[0].message.content.strip()
+                try:
+                    if txt.startswith("```"):
+                        txt = re.sub(r"^```[a-z]*\n?", "", txt).rstrip("` \n")
+                    data = json.loads(txt)
+                    if not isinstance(data, dict):
+                        raise ValueError("Top-level JSON must be an object")
+                    return data
+                except Exception as e:
+                    last_err = e
+            except Exception as api_err:
+                last_err = api_err
+                # If OpenRouter returns 404 for model (No endpoints found), try next model
+                try:
+                    msg = str(api_err)
+                    if ("404" in msg) and ("No endpoints found" in msg):
+                        break  # move to next model in queue
+                except Exception:
+                    pass
+                continue
+
+    # As a last resort, return empty dict so callers can proceed without hard failing
+    return {}
