@@ -9,6 +9,9 @@ _CLIENT = None
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.1-8b-instruct:free")
 
+def _has_any_api() -> bool:
+    return bool(os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY"))
+
 
 def _client() -> OpenAI:
     global _CLIENT
@@ -45,23 +48,32 @@ def generate_json(prompt: str, context: str, schema_hint: str, model: str | None
         "Return strict JSON. If uncertain, include an 'ambiguous': true flag and provide 'candidates'."
     )
 
+    # If no API keys set, degrade gracefully with an empty extraction
+    if not _has_any_api():
+        return {}
+
     last_err = None
     # Choose default model based on client in use
     use_model = model or (OPENROUTER_MODEL if os.getenv("OPENROUTER_API_KEY") else "gpt-4o-mini")
     for _ in range(max_retries + 1):
-        resp = _client().chat.completions.create(
-            model=use_model,
-            messages=[{"role":"system","content":sys}, {"role":"user","content":user}],
-            temperature=0.1,
-        )
-        txt = resp.choices[0].message.content.strip()
         try:
-            if txt.startswith("```"):
-                txt = re.sub(r"^```[a-z]*\n?", "", txt).rstrip("` \n")
-            data = json.loads(txt)
-            if not isinstance(data, dict):
-                raise ValueError("Top-level JSON must be an object")
-            return data
-        except Exception as e:
-            last_err = e
+            resp = _client().chat.completions.create(
+                model=use_model,
+                messages=[{"role":"system","content":sys}, {"role":"user","content":user}],
+                temperature=0.1,
+            )
+            txt = resp.choices[0].message.content.strip()
+            try:
+                if txt.startswith("```"):
+                    txt = re.sub(r"^```[a-z]*\n?", "", txt).rstrip("` \n")
+                data = json.loads(txt)
+                if not isinstance(data, dict):
+                    raise ValueError("Top-level JSON must be an object")
+                return data
+            except Exception as e:
+                last_err = e
+        except Exception as api_err:
+            last_err = api_err
+            # brief delay or immediate retry; here just continue
+            continue
     raise ValueError(f"LLM did not return valid JSON after retries: {last_err}")
