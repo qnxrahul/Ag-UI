@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import type { AppState, PatchOp } from "../state/types";
 
 import RolesSoD from "./RolesSoD";
@@ -6,7 +6,7 @@ import ExceptionsTracker from "./ExceptionsTracker";
 import FormSpending from "./FormSpending";
 import ApprovalChain from "./ApprovalChain";
 import ControlChecklists from "./ControlChecklists";
-import { Card } from "react-bootstrap";
+import { Card, Collapse } from "react-bootstrap";
 
 export default function PanelHost(props: {
   state: AppState;
@@ -18,12 +18,34 @@ export default function PanelHost(props: {
 
   const lookup = (id: string) => (state.panel_configs as any)?.[id] || null;
 
+  const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>({});
+  const toggle = (id: string) => setCollapsedMap((m) => ({ ...m, [id]: !m[id] }));
+
   const renderOne = (id: string, cfg: any) => {
     if (!cfg) return null;
+    const ptype = cfg.type;
+    const isCollapsible = ptype === "roles_sod" || ptype === "approval_chain" || ptype === "form_spending";
+    const isCollapsed = !!collapsedMap[id];
+    const caret = isCollapsed ? "▸" : "▾";
+    const headerStyle: React.CSSProperties = isCollapsible ? { cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between" } : {};
+    const Header = (
+      <Card.Header className="card-header-gradient" style={headerStyle} onClick={isCollapsible ? () => toggle(id) : undefined}>
+        <span>{cfg.title || "Panel"}</span>
+        {isCollapsible && <span style={{ fontSize: 14, opacity: 0.8 }}>{caret}</span>}
+      </Card.Header>
+    );
     const wrap = (child: React.ReactNode) => (
       <Card key={id} className="mb-3 shadow-sm">
-        <Card.Header className="card-header-gradient">{cfg.title || "Panel"}</Card.Header>
-        <Card.Body>{child}</Card.Body>
+        {Header}
+        {isCollapsible ? (
+          <Collapse in={!isCollapsed}>
+            <div>
+              <Card.Body>{child}</Card.Body>
+            </div>
+          </Collapse>
+        ) : (
+          <Card.Body>{child}</Card.Body>
+        )}
       </Card>
     );
     switch (cfg.type) {
