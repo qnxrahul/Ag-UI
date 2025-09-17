@@ -496,6 +496,33 @@ async def ingest_upload(
         },
     )
 
+    # --- Auto-create key panels from the uploaded document (Control Calendar, Exceptions) ---
+    try:
+        # Reuse the doc index for agents
+        result_controls = run_control_checklists(doc_id, index, "control calendar")
+        result_exceptions = run_exceptions_tracker(doc_id, index, "exceptions")
+
+        auto_patches = (result_controls.get("patches") or []) + (result_exceptions.get("patches") or [])
+
+        if auto_patches:
+            try:
+                async with STATE_LOCK:
+                    base = json.loads(json.dumps(STATE))
+                    patched = jsonpatch.apply_patch(base, auto_patches, in_place=False)
+                    validated_model = _validate_state(patched)
+                    new_state = validated_model.model_dump()
+                    new_state["meta"]["server_timestamp"] = time.time()
+                    server_op = {"op": "replace", "path": "/meta/server_timestamp", "value": new_state["meta"]["server_timestamp"]}
+                    for k in list(STATE.keys()):
+                        STATE[k] = new_state[k]
+            except Exception as e:
+                LAST_ERROR = {"type": "ingest_auto_panels_apply", "detail": str(e), "patches": auto_patches}
+            else:
+                await broadcast("STATE_DELTA", {"ops": auto_patches + [server_op]})
+    except Exception as e:
+        # Do not fail upload on agent errors
+        LAST_ERROR = {"type": "ingest_auto_panels", "detail": str(e)}
+
     return {
         "ok": True,
         "docName": filename,
