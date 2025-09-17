@@ -29,9 +29,50 @@ export default function ChatWindow() {
       if (!text) return;
       setMsgs((m: ChatMsg[]) => [...m, { role: "user", text }]);
     };
+    w.__onActionItems = (items: Array<{ label: string; kind: string; prompt?: string }>) => {
+      // Render suggestions as a compact assistant message with buttons
+      setMsgs((m: ChatMsg[]) => [...m, { role: "assistant", text: "Suggestions available below." }]);
+      try {
+        const container = document.createElement("div");
+        container.className = "chat-bubbles";
+        const host = listRef.current;
+        if (host) {
+          const btnWrap = document.createElement("div");
+          btnWrap.style.display = "flex";
+          btnWrap.style.flexWrap = "wrap";
+          btnWrap.style.gap = "6px";
+          items.forEach((it) => {
+            const b = document.createElement("button");
+            b.textContent = it.label;
+            b.className = "btn btn-sm btn-glow";
+            b.onclick = async () => {
+              if (it.kind === "chat" && it.prompt) {
+                (window as any).__onUserPrompt?.(it.label);
+                await fetch(`${BASE_URL}/chat/ask`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ prompt: it.prompt })
+                });
+              } else if (it.kind === "export") {
+                // trigger export via patch flag
+                await fetch(`${BASE_URL}/agui/patch`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ ops: [{ op: "add", path: "/meta/exportRequested", value: true }] })
+                });
+              }
+            };
+            btnWrap.appendChild(b);
+          });
+          host.appendChild(btnWrap);
+          host.scrollTo({ top: host.scrollHeight, behavior: "smooth" });
+        }
+      } catch {}
+    };
     return () => {
       try { if (w.__onChatMessage) delete w.__onChatMessage; } catch {}
       try { if (w.__onUserPrompt) delete w.__onUserPrompt; } catch {}
+      try { if (w.__onActionItems) delete w.__onActionItems; } catch {}
     };
   }, []);
 

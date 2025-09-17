@@ -770,6 +770,18 @@ async def chat_ask(request: Request):
     if result.get("message"):
         await broadcast("TOOL_RESULT", {"name": "chat_message", "message": result["message"]})
 
+    # Provide actionable suggestions/buttons for the UI
+    try:
+        suggestions = [
+            {"label": "Open Control Calendar", "kind": "chat", "prompt": "control calendar"},
+            {"label": "Open Exceptions Tracker", "kind": "chat", "prompt": "exceptions"},
+            {"label": "Open Approval Chain", "kind": "chat", "prompt": "approval chain"},
+            {"label": "Export CSV", "kind": "export"},
+        ]
+        await broadcast("TOOL_RESULT", {"name": "action_items", "items": suggestions})
+    except Exception:
+        pass
+
     return {"ok": True}
 
 
