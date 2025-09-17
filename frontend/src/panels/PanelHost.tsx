@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import type { AppState, PatchOp } from "../state/types";
 
 import RolesSoD from "./RolesSoD";
@@ -45,24 +45,14 @@ export default function PanelHost(props: {
     }
   };
 
-  const [activeKeys, setActiveKeys] = useState<string[]>([]);
-
-  useEffect(() => {
-    const validKeys = panelIds.map((_, idx) => String(idx));
-    // Start with all panels closed; prune removed indices
-    setActiveKeys((prev) => prev.filter((k) => validKeys.includes(k)));
-  }, [panelIds]);
+  // Uncontrolled accordion; all panels start closed and only one can be open at a time
 
   return (
     <div className="panel-stack">
       {panelIds.length === 0 ? (
         <div className="card p-3 text-muted">No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.</div>
       ) : (
-        <Accordion alwaysOpen activeKey={activeKeys} onSelect={(k) => {
-          if (typeof k === "string") {
-            setActiveKeys((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
-          }
-        }} className="accordion-kpmg">
+        <Accordion className="accordion-kpmg">
           {panelIds.map((id, idx) => renderOne(id, lookup(id), idx))}
         </Accordion>
       )}
