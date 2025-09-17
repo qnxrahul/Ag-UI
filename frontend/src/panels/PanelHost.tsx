@@ -18,10 +18,11 @@ export default function PanelHost(props: {
 
   const lookup = (id: string) => (state.panel_configs as any)?.[id] || null;
 
-  const renderOne = (id: string, cfg: any) => {
+  const renderOne = (id: string, cfg: any, idx: number) => {
     if (!cfg) return null;
+    const ek = String(idx);
     const wrap = (child: React.ReactNode) => (
-      <Accordion.Item key={id} eventKey={id} className="mb-2">
+      <Accordion.Item key={id} eventKey={ek} className="mb-2">
         <Accordion.Header>{cfg.title || "Panel"}</Accordion.Header>
         <Accordion.Body>
           {child}
@@ -67,7 +68,7 @@ export default function PanelHost(props: {
             setActiveKeys((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
           }
         }} className="accordion-kpmg">
-          {panelIds.map((id) => renderOne(id, lookup(id)))}
+          {panelIds.map((id, idx) => renderOne(id, lookup(id), idx))}
         </Accordion>
       )}
     </div>
