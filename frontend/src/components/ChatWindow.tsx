@@ -3,6 +3,7 @@ import { BASE_URL } from "../agui/bridge";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
+type ActionItem = { label: string; kind: "chat" | "export" | "main"; prompt?: string };
 
 export default function ChatWindow() {
   const [msgs, setMsgs] = useState<ChatMsg[]>([
@@ -10,6 +11,8 @@ export default function ChatWindow() {
   ]);
   const [input, setInput] = useState("");
   const listRef = useRef<HTMLDivElement>(null);
+  const [actions, setActions] = useState<ActionItem[]>([]);
+  const initialActionsRef = useRef<ActionItem[] | null>(null);
 
   useEffect(() => {
     fetch(`${BASE_URL}/chat/open`, { method: "POST" }).catch(() => {});
@@ -30,44 +33,10 @@ export default function ChatWindow() {
       setMsgs((m: ChatMsg[]) => [...m, { role: "user", text }]);
     };
     w.__onActionItems = (items: Array<{ label: string; kind: string; prompt?: string }>) => {
-      // Render suggestions as a compact assistant message with buttons
-      setMsgs((m: ChatMsg[]) => [...m, { role: "assistant", text: "Suggestions available below." }]);
-      try {
-        const container = document.createElement("div");
-        container.className = "chat-bubbles";
-        const host = listRef.current;
-        if (host) {
-          const btnWrap = document.createElement("div");
-          btnWrap.style.display = "flex";
-          btnWrap.style.flexWrap = "wrap";
-          btnWrap.style.gap = "6px";
-          items.forEach((it) => {
-            const b = document.createElement("button");
-            b.textContent = it.label;
-            b.className = "btn btn-sm btn-glow";
-            b.onclick = async () => {
-              if (it.kind === "chat" && it.prompt) {
-                (window as any).__onUserPrompt?.(it.label);
-                await fetch(`${BASE_URL}/chat/ask`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ prompt: it.prompt })
-                });
-              } else if (it.kind === "export") {
-                // trigger export via patch flag
-                await fetch(`${BASE_URL}/agui/patch`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ ops: [{ op: "add", path: "/meta/exportRequested", value: true }] })
-                });
-              }
-            };
-            btnWrap.appendChild(b);
-          });
-          host.appendChild(btnWrap);
-          host.scrollTo({ top: host.scrollHeight, behavior: "smooth" });
-        }
-      } catch {}
+      const parsed: ActionItem[] = items.map((x) => ({ label: x.label, kind: (x.kind as any) || "chat", prompt: x.prompt }));
+      setActions(parsed);
+      if (!initialActionsRef.current) initialActionsRef.current = parsed;
+      setMsgs((m: ChatMsg[]) => [...m, { role: "assistant", text: "Here are some quick actions you can take:" }]);
     };
     return () => {
       try { if (w.__onChatMessage) delete w.__onChatMessage; } catch {}
@@ -107,6 +76,63 @@ export default function ChatWindow() {
               {m.text}
             </div>
           ))}
+          {actions.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {actions.map((it, i) => (
+                <button
+                  key={`${it.label}-${i}`}
+                  className="btn btn-sm btn-glow"
+                  onClick={async () => {
+                    if (it.kind === "chat" && it.prompt) {
+                      (window as any).__onUserPrompt?.(it.label);
+                      try {
+                        await fetch(`${BASE_URL}/chat/ask`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ prompt: it.prompt })
+                        });
+                      } catch {}
+                      // simple workflow branching
+                      if (/control calendar/i.test(it.label)) {
+                        setActions([
+                          { label: "Open Exceptions Tracker", kind: "chat", prompt: "exceptions" },
+                          { label: "Open Approval Chain", kind: "chat", prompt: "approval chain" },
+                          { label: "Back to main", kind: "main" },
+                        ]);
+                      } else if (/exceptions/i.test(it.label)) {
+                        setActions([
+                          { label: "Open Control Calendar", kind: "chat", prompt: "control calendar" },
+                          { label: "Open Spending Checker", kind: "chat", prompt: "spending checker" },
+                          { label: "Back to main", kind: "main" },
+                        ]);
+                      } else if (/approval chain/i.test(it.label)) {
+                        setActions([
+                          { label: "Open Spending Checker", kind: "chat", prompt: "spending checker" },
+                          { label: "Open Control Calendar", kind: "chat", prompt: "control calendar" },
+                          { label: "Back to main", kind: "main" },
+                        ]);
+                      } else {
+                        setActions(initialActionsRef.current || []);
+                      }
+                    } else if (it.kind === "export") {
+                      try {
+                        await fetch(`${BASE_URL}/agui/patch`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ ops: [{ op: "add", path: "/meta/exportRequested", value: true }] })
+                        });
+                      } catch {}
+                      setActions(initialActionsRef.current || []);
+                    } else if (it.kind === "main") {
+                      setActions(initialActionsRef.current || []);
+                    }
+                  }}
+                >
+                  {it.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </Card.Body>
       <Card.Footer>
