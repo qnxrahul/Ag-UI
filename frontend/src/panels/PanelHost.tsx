@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { AppState, PatchOp } from "../state/types";
 
 import RolesSoD from "./RolesSoD";
@@ -44,12 +44,29 @@ export default function PanelHost(props: {
     }
   };
 
+  const [activeKeys, setActiveKeys] = useState<string[]>([]);
+
+  useEffect(() => {
+    setActiveKeys((prev) => {
+      const next = [...prev];
+      for (const id of panelIds) {
+        if (!next.includes(id)) next.push(id); // auto-open newly added panels
+      }
+      // prune removed
+      return next.filter((k) => panelIds.includes(k));
+    });
+  }, [panelIds]);
+
   return (
     <div className="panel-stack">
       {panelIds.length === 0 ? (
         <div className="card p-3 text-muted">No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.</div>
       ) : (
-        <Accordion alwaysOpen className="accordion-kpmg">
+        <Accordion alwaysOpen activeKey={activeKeys} onSelect={(k) => {
+          if (typeof k === "string") {
+            setActiveKeys((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
+          }
+        }} className="accordion-kpmg">
           {panelIds.map((id) => renderOne(id, lookup(id)))}
         </Accordion>
       )}
