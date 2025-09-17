@@ -481,29 +481,29 @@ export default function RolesSoD(
         >
           Add person
         </button>
-        <div style={{ alignSelf: "center", fontSize: 12, color: "#666" }}>
-          {people.length ? (
-            <table style={{ borderCollapse: "collapse", width: 220 }}>
-              <thead>
-                <tr>
-                  <th style={{ ...th, width: 50 }}>S.No</th>
-                  <th style={th}>UserName</th>
-                </tr>
-              </thead>
-              <tbody>
-                {people.map((p, i) => (
-                  <tr key={`${p}-${i}`}>
-                    <td style={td}>{i + 1}</td>
-                    <td style={td}>{p}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <span>(none)</span>
-          )}
-        </div>
       </div>
+
+      {people.length > 0 && (
+        <details className="details" style={{ marginTop: 8 }}>
+          <summary className="summary">People ({people.length})</summary>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, width: 60 }}>S.No</th>
+                <th style={th}>UserName</th>
+              </tr>
+            </thead>
+            <tbody>
+              {people.map((p, i) => (
+                <tr key={`${p}-${i}`}>
+                  <td style={td}>{i + 1}</td>
+                  <td style={td}>{p}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
 
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
