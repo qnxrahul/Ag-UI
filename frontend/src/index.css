@@ -166,3 +166,13 @@ body{
 
 /* Shared sticky layout for sidebar and chat cards to ensure pixel-perfect heights */
 .sticky-panel{ position: sticky; top: 8px; max-height: calc(100vh - 80px); overflow-y: auto; }
+
+/* Hide scrollbar for chat panel while allowing scroll */
+.chat-panel{ scrollbar-width: none; -ms-overflow-style: none; }
+.chat-panel::-webkit-scrollbar{ display: none; }
+
+/* Chat bubbles aligned with KPMG theme */
+.chat-bubbles{ display:flex; flex-direction:column; gap:10px; padding:10px; }
+.bubble{ max-width:85%; padding:10px 12px; border-radius:14px; white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; }
+.bubble-user{ align-self:flex-end; background: var(--kpmg-blue-700); color:#ffffff; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+.bubble-assistant{ align-self:flex-start; background: var(--kpmg-light-200); color: var(--kpmg-blue-800); border:1px solid var(--kpmg-border); }

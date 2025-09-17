@@ -43,14 +43,14 @@ export default function ChatWindow() {
         <span>Conversational Assistant</span>
         <Badge bg="secondary">Beta</Badge>
       </Card.Header>
-      <Card.Body ref={listRef as any}>
-        {msgs.map((m: ChatMsg, i: number) => (
-          <div key={i} className={`mb-2 ${m.role === "user" ? "text-end" : "text-start"}`}>
-            <span className={`badge ${m.role === "user" ? "bg-primary" : "bg-light text-dark"}`}>
+      <Card.Body ref={listRef as any} className="chat-panel">
+        <div className="chat-bubbles">
+          {msgs.map((m: ChatMsg, i: number) => (
+            <div key={i} className={`bubble ${m.role === "user" ? "bubble-user" : "bubble-assistant"}`}>
               {m.text}
-            </span>
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
       </Card.Body>
       <Card.Footer>
         <InputGroup>
