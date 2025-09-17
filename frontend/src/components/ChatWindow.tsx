@@ -13,6 +13,68 @@ export default function ChatWindow() {
   const listRef = useRef<HTMLDivElement>(null);
   const [actions, setActions] = useState<ActionItem[]>([]);
   const initialActionsRef = useRef<ActionItem[] | null>(null);
+  const [flow, setFlow] = useState<{ name: null | "spending"; step?: string; data?: any }>({ name: null });
+
+  async function fetchState() {
+    try {
+      const res = await fetch(`${BASE_URL}/agui/state`);
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  async function ensureSpendingPanel(): Promise<string | null> {
+    // Try to find an existing spending panel; else create via chat and poll
+    const findPanelId = (s: any) => {
+      const cfgs = (s?.panel_configs) || {};
+      for (const pid of Object.keys(cfgs)) {
+        if (cfgs[pid]?.type === "form_spending") return pid;
+      }
+      return null;
+    };
+    let st = await fetchState();
+    let pid = findPanelId(st);
+    if (pid) return pid;
+    try {
+      await fetch(`${BASE_URL}/chat/ask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "spending checker" })
+      });
+    } catch {}
+    // poll up to ~2s
+    for (let i = 0; i < 8; i++) {
+      await new Promise(r => setTimeout(r, 250));
+      st = await fetchState();
+      pid = findPanelId(st);
+      if (pid) return pid;
+    }
+    return null;
+  }
+
+  async function patchOps(ops: any[]) {
+    try {
+      await fetch(`${BASE_URL}/agui/patch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ops })
+      });
+    } catch {}
+  }
+
+  async function submitSpendingFlow() {
+    const amount = flow?.data?.amount;
+    const category = flow?.data?.category || null;
+    const pid = await ensureSpendingPanel();
+    if (!pid) return;
+    const ops: any[] = [];
+    if (amount !== undefined) ops.push({ op: "add", path: `/panel_configs/${pid}/controls/amount`, value: amount === null || amount === "" ? null : Number(amount) });
+    ops.push({ op: "add", path: `/panel_configs/${pid}/controls/category`, value: category });
+    if (ops.length) await patchOps(ops);
+    setMsgs((m) => [...m, { role: "assistant", text: "Spending panel updated with your inputs." }]);
+    setFlow({ name: null });
+  }
 
   useEffect(() => {
     fetch(`${BASE_URL}/chat/open`, { method: "POST" }).catch(() => {});
@@ -93,7 +155,13 @@ export default function ChatWindow() {
                         });
                       } catch {}
                       // simple workflow branching
-                      if (/control calendar/i.test(it.label)) {
+                      if (/spending checker/i.test(it.label)) {
+                        setFlow({ name: "spending", step: "input", data: {} });
+                        setActions([
+                          { label: "Submit Spending Inputs", kind: "main" },
+                          { label: "Back to main", kind: "main" },
+                        ]);
+                      } else if (/control calendar/i.test(it.label)) {
                         setActions([
                           { label: "Open Exceptions Tracker", kind: "chat", prompt: "exceptions" },
                           { label: "Open Approval Chain", kind: "chat", prompt: "approval chain" },
@@ -131,6 +199,38 @@ export default function ChatWindow() {
                   {it.label}
                 </button>
               ))}
+            </div>
+          )}
+          {flow.name === "spending" && flow.step === "input" && (
+            <div className="bubble bubble-assistant" style={{ display:"grid", gap: 8 }}>
+              <div style={{ fontWeight: 600 }}>Spending inputs</div>
+              <label style={{ display:"grid", gap: 4 }}>
+                <span style={{ fontSize: 12 }}>Amount</span>
+                <input
+                  type="number"
+                  placeholder="e.g., 18000"
+                  value={flow.data?.amount ?? ""}
+                  onChange={(e) => setFlow((f: any) => ({ ...f, data: { ...(f?.data||{}), amount: e.target.value } }))}
+                  style={{ padding: 6, border: "1px solid #c7d2fe", borderRadius: 8 }}
+                />
+              </label>
+              <label style={{ display:"grid", gap: 4 }}>
+                <span style={{ fontSize: 12 }}>Category (optional)</span>
+                <select
+                  value={flow.data?.category ?? ""}
+                  onChange={(e) => setFlow((f: any) => ({ ...f, data: { ...(f?.data||{}), category: e.target.value || null } }))}
+                  style={{ padding: 6, border: "1px solid #c7d2fe", borderRadius: 8 }}
+                >
+                  <option value="">(none)</option>
+                  <option value="ops">ops</option>
+                  <option value="asset">asset</option>
+                  <option value="program">program</option>
+                </select>
+              </label>
+              <div style={{ display:"flex", gap: 8 }}>
+                <button className="btn btn-sm btn-glow" onClick={submitSpendingFlow}>Submit</button>
+                <button className="btn btn-sm btn-glow" onClick={() => setFlow({ name: null })}>Cancel</button>
+              </div>
             </div>
           )}
         </div>
