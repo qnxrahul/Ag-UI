@@ -505,35 +505,38 @@ export default function RolesSoD(
         </details>
       )}
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={th}>Role</th>
-            <th style={th}>Assignee</th>
-          </tr>
-        </thead>
-        <tbody>
-          {roleList.map((r) => (
-            <tr key={r}>
-              <td style={td}>{r}</td>
-              <td style={td}>
-                <select
-                  value={assigns[r] ?? ""}
-                  onChange={(e) => setAssign(r, e.target.value || null)}
-                  style={inputStyle}
-                >
-                  <option value="">(unassigned)</option>
-                  {people.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </td>
+      <details className="details">
+        <summary className="summary">Role Assignments</summary>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
+          <thead>
+            <tr>
+              <th style={th}>Role</th>
+              <th style={th}>Assignee</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {roleList.map((r) => (
+              <tr key={r}>
+                <td style={td}>{r}</td>
+                <td style={td}>
+                  <select
+                    value={assigns[r] ?? ""}
+                    onChange={(e) => setAssign(r, e.target.value || null)}
+                    style={inputStyle}
+                  >
+                    <option value="">(unassigned)</option>
+                    {people.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
 
       <div>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Conflicts</div>
