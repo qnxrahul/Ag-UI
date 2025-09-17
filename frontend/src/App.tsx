@@ -283,7 +283,7 @@ export default function App() {
           <Col xs={12} md={4} lg={4} xl={4}>
             <ChatWindow />
           </Col>
-          <Col xs={12} md={5} lg={5} xl={5} style={{ marginTop: 8 }}>
+          <Col xs={12} md={5} lg={5} xl={5} style={{ paddingTop: 8 }}>
             {state ? (
               <PanelHost state={state} sendPatch={sendPatch!} />
             ) : (
