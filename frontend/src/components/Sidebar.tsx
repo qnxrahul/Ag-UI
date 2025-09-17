@@ -1,4 +1,5 @@
 import { Card, Button, Row, Col } from "react-bootstrap";
+import { BASE_URL } from "../agui/bridge";
 
 type AgentItem = { title: string; prompt: string; desc: string };
 
@@ -24,7 +25,25 @@ export default function Sidebar({ onRun }: { onRun: (prompt: string) => void }) 
                     <div className="text-truncate" style={{ fontWeight: 600, fontSize: 13, lineHeight: "16px" }}>{a.title}</div>
                     <div className="text-muted d-none d-lg-block text-truncate" style={{ fontSize: 11, lineHeight: "14px", maxWidth: 220 }}>{a.desc}</div>
                   </div>
-                  <Button size="sm" variant="primary" style={{ padding: "4px 10px", borderRadius: 9999 }} onClick={() => onRun(a.prompt)}>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    style={{ padding: "4px 10px", borderRadius: 9999 }}
+                    onClick={async () => {
+                      try {
+                        // Update chat UI immediately
+                        (window as any).__onUserPrompt?.(a.title);
+                        // Hit backend chat endpoint
+                        await fetch(`${BASE_URL}/chat/ask`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ prompt: a.prompt })
+                        });
+                      } catch {
+                        // no-op; error will be shown in chat by assistant message if any
+                      }
+                    }}
+                  >
                     Run
                   </Button>
                 </Card.Body>

@@ -19,6 +19,22 @@ export default function ChatWindow() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [msgs]);
 
+  // Bridge SSE TOOL_RESULT and external prompts into this chat window
+  useEffect(() => {
+    const w = window as any;
+    w.__onChatMessage = (text: string) => {
+      setMsgs((m: ChatMsg[]) => [...m, { role: "assistant", text }]);
+    };
+    w.__onUserPrompt = (text: string) => {
+      if (!text) return;
+      setMsgs((m: ChatMsg[]) => [...m, { role: "user", text }]);
+    };
+    return () => {
+      try { if (w.__onChatMessage) delete w.__onChatMessage; } catch {}
+      try { if (w.__onUserPrompt) delete w.__onUserPrompt; } catch {}
+    };
+  }, []);
+
   async function send(q: string) {
     if (!q.trim()) return;
     setMsgs((m) => [...m, { role: "user", text: q }]);
