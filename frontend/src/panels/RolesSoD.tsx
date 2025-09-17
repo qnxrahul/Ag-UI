@@ -482,7 +482,26 @@ export default function RolesSoD(
           Add person
         </button>
         <div style={{ alignSelf: "center", fontSize: 12, color: "#666" }}>
-          People: {people.length ? people.join(", ") : "(none)"}
+          {people.length ? (
+            <table style={{ borderCollapse: "collapse", width: 220 }}>
+              <thead>
+                <tr>
+                  <th style={{ ...th, width: 50 }}>S.No</th>
+                  <th style={th}>UserName</th>
+                </tr>
+              </thead>
+              <tbody>
+                {people.map((p, i) => (
+                  <tr key={`${p}-${i}`}>
+                    <td style={td}>{i + 1}</td>
+                    <td style={td}>{p}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <span>(none)</span>
+          )}
         </div>
       </div>
 
