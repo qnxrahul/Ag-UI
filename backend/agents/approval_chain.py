@@ -187,7 +187,7 @@ def run_approval_chain(doc_id: str, index: DocIndex, user_query: str) -> Dict[st
         "approval authority signing officer signing officers financial signing authorities limit threshold up to over not exceeding amount"
     )
 
-    all_chunks = index.all_chunks() if hasattr(index, "all_chunks") else base_chunks
+    all_chunks = index.all_chunks()
     amount_sents = _harvest_amount_candidates(all_chunks)
     amount_cids = {cid for cid, _ in amount_sents}
 
@@ -219,11 +219,12 @@ ADDITIONAL CONSTRAINTS:
             cited.add(cid)
 
     citations = []
+    id_to_page = {c.id: c.page for c in (all_chunks or [])}
     for cid in cited:
         snippet = next((c.text for c in base_chunks if c.id == cid), "")
         if not snippet and all_chunks is not base_chunks:
             snippet = next((c.text for c in all_chunks if c.id == cid), "")
-        citations.append({"key": "approval.evidence", "snippet": snippet})
+        citations.append({"key": "approval.evidence", "snippet": snippet, "page": id_to_page.get(cid), "chunk_id": cid})
 
     panel_id = f"Panel:approval_chain:{doc_id}"
     patches = [

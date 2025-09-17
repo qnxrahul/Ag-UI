@@ -1,18 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AguiClient, BASE_URL } from "./agui/bridge";
 import type { AppState, PatchOp } from "./state/types";
-import Spending from "./panels/Spending";
-import Delegation from "./panels/Delegation";
-import Violations from "./components/Violations";
-import PolicyEvidence from "./components/PolicyEvidence";
-import Banner from "./components/Banner";
-import Chat from "./panels/Chat";
-import DynamicPanelRenderer from "./panels/DynamicPanelRenderer";
+// Legacy imports retained elsewhere if needed
 
 
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import PanelHost from "./panels/PanelHost";
+
+import { Container, Navbar, Button, Form, Row, Col } from "react-bootstrap";
 
 
 
@@ -236,44 +232,66 @@ export default function App() {
 
   return (
     <>
-      <header className="header">
-        <h1 style={{ fontSize: 18, margin: 0 }}>AG-UI PoC Dashboard</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            id="fileInput"
-            type="file" accept=".pdf,.txt"
-            onChange={async (e) => {
-              const f = e.target.files?.[0]; if (!f) return;
-              try {
-                const form = new FormData();
-                form.append("file", f);
-                form.append("kind", "auto");
-                const res = await fetch(`${BASE_URL}/ingest/upload`, { method: "POST", body: form });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data?.error || "Upload failed");
-                setDocName(data.docName || f.name);
-                await softInit();
-              } catch (err) { alert((err as Error).message); }
-              finally { (e.target as HTMLInputElement).value = ""; }
-            }}
-          />
-          <button className="btn" onClick={softInit}>Initialize</button>
-          <button className="btn" onClick={exportCsv}>Export CSV</button>
-          {lastExportUrl && <a className="btn" href={lastExportUrl} target="_blank" rel="noreferrer">Download last export</a>}
-        </div>
-      </header>
+      <Navbar className="mb-2 nav-gradient" expand="md" variant="dark">
+        <Container fluid>
+          <Navbar.Brand style={{ fontWeight: 800, letterSpacing: 0.2 }}>AG-UI PoC Dashboard</Navbar.Brand>
+          <Form className="d-flex align-items-center gap-2">
+            <Form.Control
+              type="file"
+              size="sm"
+              accept=".pdf,.txt"
+              onChange={async (e: React.ChangeEvent<HTMLInputElement>) => {
+                const f = e.target.files?.[0]; if (!f) return;
+                try {
+                  const form = new FormData();
+                  form.append("file", f);
+                  form.append("kind", "auto");
+                  const res = await fetch(`${BASE_URL}/ingest/upload`, { method: "POST", body: form });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data?.error || "Upload failed");
+                  setDocName(data.docName || f.name);
+                  await softInit();
+                } catch (err) { alert((err as Error).message); }
+                finally { e.target.value = ""; }
+              }}
+              style={{ maxWidth: 260 }}
+            />
+            <Button className="btn-glow" size="sm" onClick={softInit}>Initialize</Button>
+            <Button className="btn-glow" size="sm" onClick={exportCsv}>Export CSV</Button>
+            {lastExportUrl && (
+              <Button as="a" href={lastExportUrl} target="_blank" rel="noreferrer" variant="light" size="sm" style={{ opacity:.9 }}>
+                Download last export
+              </Button>
+            )}
+          </Form>
+        </Container>
+      </Navbar>
 
       {docName && (
-        <div className="banner">
-          <strong>Loaded document:</strong> {docName}
-        </div>
+        <Container fluid className="mb-2">
+          <div className="alert alert-info py-2 mb-2">
+            <strong>Loaded document:</strong> {docName}
+          </div>
+        </Container>
       )}
 
-      <main className="app-grid">
-        <Sidebar onRun={runAgentPrompt} />
-        <ChatWindow onRun={runAgentPrompt} />
-        {state ? <PanelHost state={state} sendPatch={sendPatch!} /> : <div className="card">(connecting…)</div>}
-      </main>
+      <Container fluid>
+        <Row className="g-3">
+          <Col xs={12} md={3} lg={3} xl={3}>
+            <Sidebar onRun={runAgentPrompt} />
+          </Col>
+          <Col xs={12} md={4} lg={4} xl={4}>
+            <ChatWindow />
+          </Col>
+          <Col xs={12} md={5} lg={5} xl={5} style={{ paddingTop: 8 }}>
+            {state ? (
+              <PanelHost state={state} sendPatch={sendPatch!} />
+            ) : (
+              <div className="card p-3">(connecting…)</div>
+            )}
+          </Col>
+        </Row>
+      </Container>
     </>
   );
 }

@@ -290,7 +290,15 @@ export default function ControlChecklists(
         <summary className="summary">Citations ({citations?.length || 0})</summary>
         {citations?.length ? citations.map((c: any, i: number) => (
           <div key={i} style={{ padding: 8, border: "1px solid #eee", borderRadius: 6, background: "#fafafa", marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}><strong>{c.key}</strong></div>
+            <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
+              <strong>{c.key}</strong>
+              {typeof c.page === "number" && (
+                <span style={{ marginLeft: 8, color: "#355" }}>p.{c.page}</span>
+              )}
+              {c.chunk_id && (
+                <span style={{ marginLeft: 6, color: "#7a7a7a" }}>({c.chunk_id})</span>
+              )}
+            </div>
             <div style={{ whiteSpace: "pre-wrap" }}>{c.snippet || "(no snippet)"}</div>
           </div>
         )) : <div style={{ color: "#888" }}>(no citations)</div>}

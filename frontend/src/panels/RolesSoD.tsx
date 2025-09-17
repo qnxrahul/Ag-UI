@@ -481,40 +481,62 @@ export default function RolesSoD(
         >
           Add person
         </button>
-        <div style={{ alignSelf: "center", fontSize: 12, color: "#666" }}>
-          People: {people.length ? people.join(", ") : "(none)"}
-        </div>
       </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            <th style={th}>Role</th>
-            <th style={th}>Assignee</th>
-          </tr>
-        </thead>
-        <tbody>
-          {roleList.map((r) => (
-            <tr key={r}>
-              <td style={td}>{r}</td>
-              <td style={td}>
-                <select
-                  value={assigns[r] ?? ""}
-                  onChange={(e) => setAssign(r, e.target.value || null)}
-                  style={inputStyle}
-                >
-                  <option value="">(unassigned)</option>
-                  {people.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </td>
+      {people.length > 0 && (
+        <details className="details" style={{ marginTop: 8 }}>
+          <summary className="summary">People ({people.length})</summary>
+          <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
+            <thead>
+              <tr>
+                <th style={{ ...th, width: 60 }}>S.No</th>
+                <th style={th}>UserName</th>
+              </tr>
+            </thead>
+            <tbody>
+              {people.map((p, i) => (
+                <tr key={`${p}-${i}`}>
+                  <td style={td}>{i + 1}</td>
+                  <td style={td}>{p}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </details>
+      )}
+
+      <details className="details">
+        <summary className="summary">Role Assignments</summary>
+        <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
+          <thead>
+            <tr>
+              <th style={th}>Role</th>
+              <th style={th}>Assignee</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {roleList.map((r) => (
+              <tr key={r}>
+                <td style={td}>{r}</td>
+                <td style={td}>
+                  <select
+                    value={assigns[r] ?? ""}
+                    onChange={(e) => setAssign(r, e.target.value || null)}
+                    style={inputStyle}
+                  >
+                    <option value="">(unassigned)</option>
+                    {people.map((p) => (
+                      <option key={p} value={p}>
+                        {p}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
 
       <div>
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Conflicts</div>
@@ -546,8 +568,14 @@ export default function RolesSoD(
                 marginTop: 8,
               }}
             >
-              <div style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
-                <strong>{c.key}</strong>
+              <div style={{ display:"flex", alignItems:"center", gap:8, fontSize: 12, color: "#666", marginBottom: 4 }}>
+                <span style={{ display:"inline-block", padding:"2px 6px", borderRadius:999, background:"#e0e7ff", color:"#1e3a8a", border:"1px solid #c7d2fe", fontWeight:600 }}>{c.key}</span>
+                {typeof c.page === "number" && (
+                  <span style={{ marginLeft: 8, color: "#355" }}>p.{c.page}</span>
+                )}
+                {c.chunk_id && (
+                  <span style={{ marginLeft: 6, color: "#7a7a7a" }}>({c.chunk_id})</span>
+                )}
               </div>
               <div style={{ whiteSpace: "pre-wrap" }}>
                 {c.snippet || "(no snippet)"}

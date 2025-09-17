@@ -6,6 +6,7 @@ import ExceptionsTracker from "./ExceptionsTracker";
 import FormSpending from "./FormSpending";
 import ApprovalChain from "./ApprovalChain";
 import ControlChecklists from "./ControlChecklists";
+import { Accordion } from "react-bootstrap";
 
 export default function PanelHost(props: {
   state: AppState;
@@ -17,13 +18,16 @@ export default function PanelHost(props: {
 
   const lookup = (id: string) => (state.panel_configs as any)?.[id] || null;
 
-  const renderOne = (id: string, cfg: any) => {
+  const renderOne = (id: string, cfg: any, idx: number) => {
     if (!cfg) return null;
+    const ek = String(idx);
     const wrap = (child: React.ReactNode) => (
-      <div key={id} className="card">
-        <div className="panel-card-title">{cfg.title || "Panel"}</div>
-        {child}
-      </div>
+      <Accordion.Item key={id} eventKey={ek} className="mb-2">
+        <Accordion.Header>{cfg.title || "Panel"}</Accordion.Header>
+        <Accordion.Body>
+          {child}
+        </Accordion.Body>
+      </Accordion.Item>
     );
     switch (cfg.type) {
       case "roles_sod":
@@ -41,14 +45,16 @@ export default function PanelHost(props: {
     }
   };
 
+  // Uncontrolled accordion; all panels start closed and only one can be open at a time
+
   return (
     <div className="panel-stack">
       {panelIds.length === 0 ? (
-        <div className="card" style={{ color: "#6b7280" }}>
-          No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.
-        </div>
+        <div className="card p-3 text-muted">No panels yet. Ask the assistant for a Spending Checker, Roles & SoD, Approval Chain, Control Calendar, or Exceptions.</div>
       ) : (
-        panelIds.map((id) => renderOne(id, lookup(id)))
+        <Accordion className="accordion-kpmg">
+          {panelIds.map((id, idx) => renderOne(id, lookup(id), idx))}
+        </Accordion>
       )}
     </div>
   );

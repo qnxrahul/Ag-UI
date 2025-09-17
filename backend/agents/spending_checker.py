@@ -316,6 +316,7 @@ def run_spending_checker(doc_id: str, index: DocIndex, user_query: str) -> Dict[
     panel_id = f"Panel:spending:{doc_id}"
     citations = []
     cited_ids: Set[str] = set()
+    id_to_page = {c.id: c.page for c in chunks}
     for t in result.get("tiers", []):
         for ch in (t.get("citations") or []):
             cited_ids.add(ch)
@@ -324,7 +325,7 @@ def run_spending_checker(doc_id: str, index: DocIndex, user_query: str) -> Dict[
             cited_ids.add(ch)
     for cid in cited_ids:
         snippet = next((c.text for c in chunks if c.id == cid), "")
-        citations.append({"key": "spend.rule", "snippet": snippet})
+        citations.append({"key": "spend.rule", "snippet": snippet, "page": id_to_page.get(cid), "chunk_id": cid})
 
     patches = [
         {"op":"add","path":"/panels/-","value": panel_id},

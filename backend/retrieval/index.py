@@ -26,6 +26,10 @@ class DocIndex:
         idxs = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:k]
         return [self.chunks[i] for i in idxs]
 
+    def all_chunks(self) -> List[Chunk]:
+        """Return all chunks in document order."""
+        return list(self.chunks)
+
 def chunk_text_to_paragraphs(text: str, page_map: List[int]) -> List[Chunk]:
     """
     text: full document text

@@ -198,9 +198,10 @@ ADDITIONAL CONSTRAINTS:
                 cited.add(cid)
 
     citations = []
+    id_to_page = {c.id: c.page for c in chunks}
     for cid in cited:
         snippet = next((c.text for c in chunks if c.id == cid), "")
-        citations.append({"key": "controls.evidence", "snippet": snippet})
+        citations.append({"key": "controls.evidence", "snippet": snippet, "page": id_to_page.get(cid), "chunk_id": cid})
 
     panel_id = f"Panel:control_checklists:{doc_id}"
     patches = [

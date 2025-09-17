@@ -1,4 +1,5 @@
-
+import { Card, Button, Row, Col } from "react-bootstrap";
+import { BASE_URL } from "../agui/bridge";
 
 type AgentItem = { title: string; prompt: string; desc: string };
 
@@ -12,16 +13,45 @@ const AGENTS: AgentItem[] = [
 
 export default function Sidebar({ onRun }: { onRun: (prompt: string) => void }) {
   return (
-    <div className="card sidebar" style={{ display: "grid", gap: 10 }}>
-      <div style={{ fontWeight: 700, marginBottom: 2 }}>Agents</div>
-      <div style={{ display: "grid", gap: 8 }}>
-        {AGENTS.map((a) => (
-          <button key={a.title} className="agent" onClick={() => onRun(a.prompt)}>
-            <h4>{a.title}</h4>
-            <p>{a.desc}</p>
-          </button>
-        ))}
-      </div>
-    </div>
+    <Card className="shadow-sm">
+      <Card.Body>
+        <Card.Title>Agents</Card.Title>
+        <Row className="g-1">
+          {AGENTS.map((a: AgentItem) => (
+            <Col key={a.title} xs={12} sm={6} md={12}>
+              <Card className="agent-card">
+                <Card.Body className="d-flex align-items-center justify-content-between py-2 px-2">
+                  <div className="text-truncate" style={{ minWidth: 0 }}>
+                    <div className="text-truncate" style={{ fontWeight: 600, fontSize: 13, lineHeight: "16px" }}>{a.title}</div>
+                    <div className="text-muted d-none d-lg-block text-truncate" style={{ fontSize: 11, lineHeight: "14px", maxWidth: 220 }}>{a.desc}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    style={{ padding: "4px 10px", borderRadius: 9999 }}
+                    onClick={async () => {
+                      try {
+                        // Update chat UI immediately
+                        (window as any).__onUserPrompt?.(a.title);
+                        // Hit backend chat endpoint
+                        await fetch(`${BASE_URL}/chat/ask`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ prompt: a.prompt })
+                        });
+                      } catch {
+                        // no-op; error will be shown in chat by assistant message if any
+                      }
+                    }}
+                  >
+                    Run
+                  </Button>
+                </Card.Body>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </Card.Body>
+    </Card>
   );
 }

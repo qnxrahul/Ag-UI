@@ -3,12 +3,25 @@ body { margin: 0; }
 * { box-sizing: border-box; } */
 
 :root{
-  --bg:#f6f8fb;
+  /* Base */
+  --bg:#ffffff;
   --panel:#ffffff;
-  --text:#0f172a;      /* slate-900 */
-  --muted:#6b7280;     /* gray-500 */
-  --border:#e5e7eb;    /* gray-200 */
-  --primary:#1e3a8a;   /* indigo-800 */
+  --text:#0f172a;          /* slate-900 */
+  --muted:#6b7280;         /* gray-500 */
+  --border:#e5e7eb;        /* gray-200 */
+
+  /* KPMG-inspired palette */
+  --kpmg-blue-900:#001E6C; /* deep navy */
+  --kpmg-blue-800:#00338D; /* kpmg blue */
+  --kpmg-blue-700:#0047BB; /* royal */
+  --kpmg-blue-500:#0052CC; /* action */
+  --kpmg-cyan-400:#00A3E0; /* accent */
+  --kpmg-light-200:#E6F0FF;/* light bg tint */
+  --kpmg-light-150:#F2F8FF;/* softer tint */
+  --kpmg-light-100:#EAF6FF;/* cyan tint */
+  --kpmg-border:#C7D8F5;   /* border tint */
+
+  --primary:var(--kpmg-blue-800);
   --primary-contrast:#ffffff;
   --chip:#f3f4f6;
 }
@@ -17,14 +30,18 @@ body { margin: 0; }
 html,body,#root{height:100%}
 body{
   margin:0;
-  background:var(--bg);
+  /* Subtle KPMG-tinted gradient for page whitespace */
+  background:
+    radial-gradient(1200px 600px at 15% 0%, #F2F8FF 0%, rgba(242, 248, 255, 0) 60%),
+    radial-gradient(1200px 800px at 85% 10%, #EAF6FF 0%, rgba(234, 246, 255, 0) 60%),
+    linear-gradient(135deg, #ffffff 0%, #F2F8FF 40%, #ffffff 100%);
   color:var(--text);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
 }
 
 .header{
   display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--border);
+  padding:12px 16px;background: linear-gradient(90deg, var(--kpmg-blue-900), var(--kpmg-blue-700)); color: #fff; border-bottom:1px solid var(--border);
   position:sticky;top:0;z-index:10;
 }
 .btn{
@@ -43,8 +60,11 @@ body{
 }
 
 .card{
-  background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:14px;
+  background:#ffffff; border:1px solid var(--border); border-radius:12px; padding:14px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
 }
+.card:hover{ transform: translateY(-1px); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10); filter: saturate(1.02) brightness(1.01); }
 
 .sidebar .agent{
   display:block; padding:10px; border:1px solid var(--border); border-radius:10px; background:#f8fafc;
@@ -67,5 +87,92 @@ body{
 .input{ padding:10px; border:1px solid var(--border); border-radius:10px; width:100%; background:#fff; }
 .panel-stack{ height:100%; overflow:auto; display:grid; gap:16px; }
 .panel-card-title{ font-weight:700; margin-bottom:10px; }
-.details{ border:1px dashed var(--border); border-radius:10px; padding:8px; background:#fafafa; }
+.details{ border:1px dashed var(--border); border-radius:10px; padding:8px; background:#ffffff; }
+.details:hover{ filter: saturate(1.04) brightness(1.01); }
+
+/* Fancy navbar + buttons */
+.nav-gradient{
+  background: linear-gradient(90deg, var(--kpmg-blue-900) 0%, var(--kpmg-blue-700) 45%, var(--kpmg-cyan-400) 100%) !important;
+  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.22);
+}
+
+/* Apple-like navbar */
+.nav-apple{
+  background:#000000 !important;
+  color:#ffffff !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+}
+.nav-apple .navbar-brand, .nav-apple .nav-link, .nav-apple .form-label{ color:#ffffff !important; }
+
+.btn-glow{
+  background: linear-gradient(135deg, var(--kpmg-blue-500), var(--kpmg-cyan-400));
+  color:#fff !important;
+  border:0;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.35);
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.btn-glow:hover{
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(34, 211, 238, 0.35);
+  filter: brightness(1.05);
+}
+.btn-glow:active{ transform: translateY(0); }
+
+/* Apple-like buttons */
+.btn-apple{
+  background:#0a0a0a !important; color:#fff !important; border:1px solid #0a0a0a !important;
+  border-radius:9999px; padding:8px 14px;
+  transition: transform .15s ease, filter .15s ease, box-shadow .15s ease;
+}
+.btn-apple:hover{ filter: brightness(1.08); box-shadow: 0 8px 20px rgba(0,0,0,0.2); transform: translateY(-1px); }
+.btn-apple:active{ transform: translateY(0); }
+
+.btn-apple-ghost{
+  background:transparent !important; color:#ffffff !important; border:1px solid #3a3a3c !important;
+  border-radius:9999px; padding:8px 14px;
+  transition: transform .15s ease, filter .15s ease, border-color .15s ease;
+}
+.btn-apple-ghost:hover{ border-color:#6e6e73 !important; transform: translateY(-1px); }
+
+/* Card header gradients */
+.card-header-gradient{ background:#ffffff; color:var(--text); }
+
+/* Agent cards hover/interactive */
+.agent-card{
+  background:#ffffff !important; border: 1px solid var(--border) !important;
+  box-shadow: inset 0 0 0 1px rgba(15,23,42,0.04) !important;
+  transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+.agent-card:hover{ transform: translateY(-2px); box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12) !important; filter: saturate(1.01) brightness(1.01); }
 .summary{ cursor:pointer; color:var(--primary); font-weight:600; }
+
+/* Accordion styling to align with KPMG accents */
+.accordion-kpmg .accordion-item{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+}
+.accordion-kpmg .accordion-item + .accordion-item{ margin-top: 10px; }
+.accordion-kpmg .accordion-header .accordion-button{
+  background: linear-gradient(90deg, var(--kpmg-light-200), var(--kpmg-light-150));
+  color: var(--kpmg-blue-800);
+  font-weight: 600;
+}
+.accordion-kpmg .accordion-button:not(.collapsed){
+  box-shadow: inset 0 -1px 0 rgba(0,0,0,0.05);
+}
+.accordion-kpmg .accordion-body{ background: #ffffff; }
+
+/* Shared sticky layout for sidebar and chat cards to ensure pixel-perfect heights */
+.sticky-panel{ position: sticky; top: 8px; max-height: calc(100vh - 80px); overflow-y: auto; }
+
+/* Hide scrollbar for chat panel while allowing scroll */
+.chat-panel{ scrollbar-width: none; -ms-overflow-style: none; }
+.chat-panel::-webkit-scrollbar{ display: none; }
+
+/* Chat bubbles aligned with KPMG theme */
+.chat-bubbles{ display:flex; flex-direction:column; gap:10px; padding:10px; }
+.bubble{ max-width:85%; padding:10px 12px; border-radius:14px; white-space:pre-wrap; word-break:break-word; overflow-wrap:anywhere; }
+.bubble-user{ align-self:flex-end; background: var(--kpmg-blue-700); color:#ffffff; box-shadow: 0 6px 16px rgba(0,0,0,0.12); }
+.bubble-assistant{ align-self:flex-start; background: var(--kpmg-light-200); color: var(--kpmg-blue-800); border:1px solid var(--kpmg-border); }
