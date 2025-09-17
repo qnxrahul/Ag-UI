@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import type { AppState, PatchOp } from "../state/types";
 
 import RolesSoD from "./RolesSoD";
@@ -46,12 +46,18 @@ export default function PanelHost(props: {
   };
 
   const [activeKeys, setActiveKeys] = useState<string[]>([]);
+  const prevCount = useRef<number>(0);
 
   useEffect(() => {
-    setActiveKeys((prev) => {
-      const validKeys = panelIds.map((_, idx) => String(idx));
-      return prev.filter((k) => validKeys.includes(k));
-    });
+    const validKeys = panelIds.map((_, idx) => String(idx));
+    if (prevCount.current === 0 && panelIds.length > 0) {
+      // First time panels appear: open the first, keep others closed
+      setActiveKeys(["0"]);
+    } else {
+      // Preserve current open panels, but prune removed indices; new ones remain closed
+      setActiveKeys((prev) => prev.filter((k) => validKeys.includes(k)));
+    }
+    prevCount.current = panelIds.length;
   }, [panelIds]);
 
   return (
