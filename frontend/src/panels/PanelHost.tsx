@@ -49,12 +49,8 @@ export default function PanelHost(props: {
 
   useEffect(() => {
     setActiveKeys((prev) => {
-      const next = [...prev];
-      for (const id of panelIds) {
-        if (!next.includes(id)) next.push(id); // auto-open newly added panels
-      }
-      // prune removed
-      return next.filter((k) => panelIds.includes(k));
+      const validKeys = panelIds.map((_, idx) => String(idx));
+      return prev.filter((k) => validKeys.includes(k));
     });
   }, [panelIds]);
 
