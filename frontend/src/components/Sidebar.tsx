@@ -19,7 +19,7 @@ export default function Sidebar({ onRun }: { onRun: (prompt: string) => void }) 
         <Row className="g-1">
           {AGENTS.map((a: AgentItem) => (
             <Col key={a.title} xs={12} sm={6} md={12}>
-              <Card className="border-0 agent-card">
+              <Card className="agent-card">
                 <Card.Body className="d-flex align-items-center justify-content-between py-2 px-2">
                   <div className="text-truncate" style={{ minWidth: 0 }}>
                     <div className="text-truncate" style={{ fontWeight: 600, fontSize: 13, lineHeight: "16px" }}>{a.title}</div>
