@@ -38,10 +38,7 @@ export default function ChatWindow() {
   }
 
   return (
-    <Card
-      className="shadow-sm"
-      style={{ background: "#ffffff", position: "sticky", top: 8, maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}
-    >
+    <Card className="shadow-sm sticky-panel" style={{ background: "#ffffff" }}>
       <Card.Header className="d-flex align-items-center gap-2" style={{ background: "#ffffff" }}>
         <span>Conversational Assistant</span>
         <Badge bg="secondary">Beta</Badge>
