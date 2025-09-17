@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import type { AppState, PatchOp } from "../state/types";
 
 import RolesSoD from "./RolesSoD";
@@ -21,10 +21,24 @@ export default function PanelHost(props: {
   const [collapsedMap, setCollapsedMap] = useState<Record<string, boolean>>({});
   const toggle = (id: string) => setCollapsedMap((m) => ({ ...m, [id]: !m[id] }));
 
+  // Initialize new panels as collapsed by default; keep existing states
+  useEffect(() => {
+    setCollapsedMap((prev) => {
+      const next: Record<string, boolean> = { ...prev };
+      for (const id of panelIds) {
+        if (next[id] === undefined) next[id] = true;
+      }
+      // optional: remove stale entries
+      for (const k of Object.keys(next)) {
+        if (!panelIds.includes(k)) delete next[k];
+      }
+      return next;
+    });
+  }, [panelIds]);
+
   const renderOne = (id: string, cfg: any) => {
     if (!cfg) return null;
-    const ptype = cfg.type;
-    const isCollapsible = ptype === "roles_sod" || ptype === "approval_chain" || ptype === "form_spending";
+    const isCollapsible = true;
     const isCollapsed = !!collapsedMap[id];
     const caret = isCollapsed ? "▸" : "▾";
     const headerStyle: React.CSSProperties = isCollapsible ? { cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", justifyContent: "space-between" } : {};
