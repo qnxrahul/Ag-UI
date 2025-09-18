@@ -156,6 +156,22 @@ export class AguiClient {
   async exportCsv() {
     return this.sendPatch([{ op: "add", path: "/meta/exportRequested", value: true }]);
   }
+
+  async listTools(): Promise<any> {
+    const res = await fetch(`${BASE_URL}/agui/tools`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async runTool(name: string, args: any): Promise<any> {
+    const res = await fetch(`${BASE_URL}/agui/tools/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, args })
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
 }
 
 export { BASE_URL };

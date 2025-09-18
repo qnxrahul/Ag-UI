@@ -283,6 +283,90 @@ def _validate_state(candidate: Dict[str, Any]) -> AppState:
     return AppState.model_validate(candidate)
 
 
+# ----------------- AG-UI Tools -----------------
+class Tool(BaseModel):
+    name: str
+    title: str
+    description: str | None = None
+    schema: Dict[str, Any] = {}
+
+
+TOOLS: Dict[str, Tool] = {
+    "panel.patch": Tool(
+        name="panel.patch",
+        title="Apply JSON Patch",
+        description="Apply JSON Patch ops to app state",
+        schema={"type":"object","properties":{"ops":{"type":"array"}},"required":["ops"]},
+    ),
+    "export.csv": Tool(
+        name="export.csv",
+        title="Export CSV",
+        description="Export a CSV summary and return URL",
+        schema={"type":"object","properties":{}},
+    ),
+    "open.panel": Tool(
+        name="open.panel",
+        title="Open Panel",
+        description="Ensure a panel exists (by type)",
+        schema={"type":"object","properties":{"type":{"type":"string"}},"required":["type"]},
+    ),
+}
+
+
+@app.get("/agui/tools")
+async def list_tools():
+    return {"tools": [t.model_dump() for t in TOOLS.values()]}
+
+
+@app.post("/agui/tools/run")
+async def run_tool(body: Dict[str, Any]):
+    name = (body or {}).get("name")
+    args = (body or {}).get("args") or {}
+    if name not in TOOLS:
+        return JSONResponse(status_code=404, content={"error": "unknown tool"})
+
+    if name == "panel.patch":
+        try:
+            patch_req = PatchRequest(ops=[PatchOp(**op) for op in (args.get("ops") or [])])
+        except Exception as e:
+            return JSONResponse(status_code=400, content={"error": f"invalid ops: {e}"})
+        res = await apply_patch(patch_req)
+        await broadcast("TOOL_RESULT", {"name":"tool.result","tool":"panel.patch","ok":True})
+        return res
+
+    if name == "export.csv":
+        async with STATE_LOCK:
+            base = json.loads(json.dumps(STATE))
+        url = _export_csv_from_state(base)
+        await broadcast("TOOL_RESULT", {"name":"tool.result","tool":"export.csv","url":url})
+        return {"ok": True, "url": url}
+
+    if name == "open.panel":
+        ptype = (args.get("type") or "").strip()
+        if not ptype:
+            return JSONResponse(status_code=400, content={"error": "missing type"})
+        # Use agents to create as needed
+        doc_id = STATE.get("meta", {}).get("doc_id")
+        if not doc_id or doc_id not in DOC_INDEXES:
+            return JSONResponse(status_code=400, content={"error": "No document uploaded yet"})
+        index = DOC_INDEXES[doc_id]
+        mapping = {
+            "form_spending": lambda: run_spending_checker(doc_id, index, "spending"),
+            "approval_chain": lambda: run_approval_chain(doc_id, index, "approval chain"),
+            "exceptions_tracker": lambda: run_exceptions_tracker(doc_id, index, "exceptions"),
+        }
+        if ptype not in mapping:
+            return JSONResponse(status_code=400, content={"error": "unsupported panel type"})
+        result = mapping[ptype]()
+        patches = result.get("patches") or []
+        if patches:
+            await broadcast("TOOL_RESULT", {"name":"tool.result","tool":"open.panel","created":ptype})
+            return await apply_patch(PatchRequest(ops=[PatchOp(**op) for op in patches]))
+        return {"ok": True}
+
+    return JSONResponse(status_code=400, content={"error": "unhandled tool"})
+
+
 def _ops_touch_prefix(ops: List[Dict[str, Any]], prefix: str) -> bool:
     return any(o.get("path", "").startswith(prefix) for o in ops)
 
