@@ -26,8 +26,8 @@ export async function runWithHttpAgent(
 ): Promise<void> {
   const raw = (import.meta as any).env?.VITE_AGENT_URL;
   const endpoint = (typeof raw === "string" && raw.trim()) ? raw.trim() : `${BASE_URL}/agent`;
-  const agent = new HttpAgent(endpoint);
-  const iter = await agent.run(input, { signal });
+  const agent = new HttpAgent({ endpoint });
+  const iter = await agent.run(input);
   for await (const ev of iter) {
     if (!ev) continue;
     if (typeof onEvent === "function") {
