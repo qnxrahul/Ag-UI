@@ -73,6 +73,31 @@ try:
             add_langgraph_fastapi_endpoint(app, graph_obj, "/agent")
 except Exception:
     pass
+
+# Always provide a fallback /agent endpoint that proxies to /agui/run
+@app.post("/agent")
+async def agent_fallback(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    port = os.getenv("PORT", "8000")
+    run_url = f"http://127.0.0.1:{port}/agui/run"
+    async def forward():
+        async with httpx.AsyncClient(timeout=None) as client:
+            try:
+                async with client.stream("POST", run_url, json=body) as resp:
+                    if resp.status_code != 200:
+                        err = await resp.aread()
+                        yield b"event: ERROR\n" + b"data: " + err + b"\n\n"
+                        return
+                    async for chunk in resp.aiter_bytes():
+                        if chunk:
+                            yield chunk
+            except Exception as e:
+                payload = {"status": 502, "body": f"proxy_failure: {type(e).__name__}: {e}"}
+                yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+    return StreamingResponse(forward(), media_type="text/event-stream")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
