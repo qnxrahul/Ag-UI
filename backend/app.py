@@ -561,13 +561,8 @@ async def agui_run(request: Request):
     Proxy AG-UI run calls to a LangGraph deployment and stream SSE back to the client.
     Configure target via env var LANGGRAPH_RUN_URL.
     """
-    if not LANGGRAPH_RUN_URL:
-        # Fallback to local /agent endpoint if available
-        port = os.getenv("PORT", "8000")
-        local = f"http://127.0.0.1:{port}/agent"
-        os.environ["LANGGRAPH_RUN_URL"] = local
-        global LANGGRAPH_RUN_URL
-        LANGGRAPH_RUN_URL = local
+    # Resolve run URL once (prefer configured; fallback to local /agent)
+    run_url = LANGGRAPH_RUN_URL or f"http://127.0.0.1:{os.getenv('PORT','8000')}/agent"
 
     try:
         data = await request.json()
@@ -634,7 +629,7 @@ async def agui_run(request: Request):
     async def proxy_stream():
         async with httpx.AsyncClient(timeout=None) as client:
             try:
-                async with client.stream("POST", LANGGRAPH_RUN_URL, json=data) as resp:
+                async with client.stream("POST", run_url, json=data) as resp:
                     if resp.status_code != 200:
                         body = await resp.aread()
                         payload = {"status": resp.status_code, "body": body.decode("utf-8", "ignore")}
