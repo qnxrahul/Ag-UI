@@ -308,6 +308,31 @@ def _validate_state(candidate: Dict[str, Any]) -> AppState:
     return AppState.model_validate(candidate)
 
 
+class RunAgentTool(BaseModel):
+    name: str
+    description: Optional[str] = None
+    parameters: Dict[str, Any] = {}
+
+
+class RunAgentContext(BaseModel):
+    role: str
+    content: str
+
+
+class RunAgentMessage(BaseModel):
+    role: str
+    content: str
+
+
+class RunAgentInputModel(BaseModel):
+    threadId: Optional[str] = None
+    runId: Optional[str] = None
+    messages: List[RunAgentMessage]
+    tools: Optional[List[RunAgentTool]] = None
+    context: Optional[List[RunAgentContext]] = None
+    forwardedProps: Optional[Dict[str, Any]] = None
+
+
 # ----------------- AG-UI Tools -----------------
 class Tool(BaseModel):
     name: str
@@ -593,6 +618,16 @@ async def agui_run(request: Request):
         data = await request.json()
     except Exception:
         data = None
+    # Normalize to RunAgentInputModel
+    try:
+        if not isinstance(data, dict):
+            data = {}
+        if "messages" not in data and (data.get("prompt") or data.get("message") or data.get("text")):
+            text = data.get("prompt") or data.get("message") or data.get("text")
+            data = {"messages": [{"role": "user", "content": str(text)}]}
+        RunAgentInputModel(**data)
+    except Exception as e:
+        return StreamingResponse((chunk for chunk in [b"event: ERROR\n" + b"data: \"invalid RunAgentInput\"\n\n"]))
 
     # ---- Build a semantic cache key (intent + doc + top chunks + normalized prompt) ----
     key = None

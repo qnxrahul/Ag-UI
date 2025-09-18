@@ -229,7 +229,7 @@ export default function ChatWindow() {
           { name: "open.panel", description: "Open panel", parameters: { type: "object", properties: { type: { type: "string" } }, required: ["type"] } },
         ];
         await runWithHttpAgent(
-          { runId: crypto.randomUUID(), messages: [{ role: "user", content: q }], tools },
+          { runId: crypto.randomUUID(), messages: [{ role: "user", content: q }], tools, context: [], forwardedProps: {} },
           (ev) => {
             try {
               if ((ev as any)?.name === "chat_message" && (ev as any)?.message) {
@@ -243,7 +243,7 @@ export default function ChatWindow() {
         usedHttpAgent = true;
       } catch {
         // Fallback to plain fetch proxy
-        const res = await runViaBackend({ messages: [{ role: "user", content: q }] }, controller.signal);
+        const res = await runViaBackend({ messages: [{ role: "user", content: q }], context: [], forwardedProps: {}, tools: [] }, controller.signal);
         const cacheHdr = res.headers.get("X-AGUI-Cache") || "";
         const savedHdr = res.headers.get("X-AGUI-Saved-Est") || undefined;
         if (cacheHdr) setLastTokenInfo({ cache: cacheHdr, savedEst: savedHdr ? Number(savedHdr) : undefined });
