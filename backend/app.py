@@ -409,13 +409,39 @@ async def agui_run(request: Request):
     except Exception:
         data = None
 
-    # Cache key based on normalized input
+    # ---- Build a semantic cache key (intent + doc + top chunks + normalized prompt) ----
     key = None
-    if isinstance(data, dict):
-        try:
-            key = json.dumps(data, sort_keys=True)
-        except Exception:
-            key = None
+    try:
+        messages = (data or {}).get("messages") if isinstance(data, dict) else None
+        last_msg = None
+        if isinstance(messages, list) and messages:
+            # pick last user message
+            for m in reversed(messages):
+                if isinstance(m, dict) and (m.get("role") or "").lower() == "user":
+                    last_msg = (m.get("content") or "").strip()
+                    break
+        norm_prompt = " ".join((last_msg or "").lower().split())
+        intent = detect_intent(norm_prompt)
+        doc_id = (STATE.get("meta", {}) or {}).get("doc_id")
+        top_ids: List[str] = []
+        if isinstance(doc_id, str) and doc_id in DOC_INDEXES and norm_prompt:
+            try:
+                idx = DOC_INDEXES[doc_id]
+                # use the prompt directly; fallback to intent label if empty
+                base_q = norm_prompt or intent
+                for c in idx.top_k(base_q, k=6):
+                    top_ids.append(c.id)
+            except Exception:
+                top_ids = []
+        key_obj = {"intent": intent, "doc": doc_id, "ids": top_ids, "prompt": norm_prompt}
+        key = json.dumps(key_obj, sort_keys=True)
+    except Exception:
+        # fallback to raw body key
+        if isinstance(data, dict):
+            try:
+                key = json.dumps(data, sort_keys=True)
+            except Exception:
+                key = None
     now = time.time()
     if key and key in RUN_CACHE:
         entry = RUN_CACHE.get(key) or {}

@@ -168,6 +168,40 @@ export default function ChatWindow() {
         }
       } catch {}
     };
+
+    // Optional: handle AG-UI structured cards (ui_card)
+    w.__onUiCard = (cardJson: any) => {
+      try {
+        const card = new AdaptiveCards.AdaptiveCard();
+        card.version = new AdaptiveCards.Version(1, 5);
+        card.onExecuteAction = async (action: any) => {
+          const data = (action as any).data || {};
+          if (data?.patch && Array.isArray(data.patch)) {
+            try {
+              await fetch(`${BASE_URL}/agui/patch`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ops: data.patch })
+              });
+            } catch {}
+          } else if (typeof data?.prompt === "string") {
+            try {
+              await runViaBackend({ messages: [{ role: "user", content: data.prompt }] });
+            } catch {}
+          }
+        };
+        card.parse(cardJson);
+        const rendered = card.render();
+        const host = listRef.current;
+        if (host && rendered) {
+          const wrap = document.createElement("div");
+          wrap.style.marginTop = "6px";
+          host.appendChild(wrap);
+          wrap.appendChild(rendered);
+          host.scrollTo({ top: host.scrollHeight, behavior: "smooth" });
+        }
+      } catch {}
+    };
     return () => {
       try { if (w.__onChatMessage) delete w.__onChatMessage; } catch {}
       try { if (w.__onUserPrompt) delete w.__onUserPrompt; } catch {}
