@@ -79,7 +79,7 @@ export default function ChatWindow() {
   }
 
   useEffect(() => {
-    fetch(`${BASE_URL}/chat/open`, { method: "POST" }).catch(() => {});
+    fetch(`${BASE_URL}/chat/open`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).catch(() => {});
     // Fetch token totals on mount and every 10s
     let alive = true;
     const tick = async () => {
