@@ -27,7 +27,24 @@ export async function runWithHttpAgent(
   const raw = (import.meta as any).env?.VITE_AGENT_URL;
   const endpoint = (typeof raw === "string" && raw.trim()) ? raw.trim() : `${BASE_URL}/agent`;
   const agent = new HttpAgent({ endpoint });
-  const stream: any = agent.run(input);
+  const uuid = () => (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
+  const getThreadId = () => {
+    try {
+      const k = "agui_thread_id";
+      let v = localStorage.getItem(k);
+      if (!v) { v = uuid(); localStorage.setItem(k, v); }
+      return v;
+    } catch { return uuid(); }
+  };
+  const normalized = {
+    threadId: getThreadId(),
+    runId: input.runId || uuid(),
+    messages: (input.messages || []).map((m) => ({ id: uuid(), role: m.role as any, content: m.content, name: undefined })),
+    tools: input.tools || [],
+    context: input.context || [],
+    forwardedProps: input.forwardedProps,
+  } as any;
+  const stream: any = agent.run(normalized);
 
   await new Promise<void>((resolve, reject) => {
     let subscription: any;
