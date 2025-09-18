@@ -466,7 +466,12 @@ async def agui_run(request: Request):
     Configure target via env var LANGGRAPH_RUN_URL.
     """
     if not LANGGRAPH_RUN_URL:
-        return JSONResponse(status_code=500, content={"error": "LANGGRAPH_RUN_URL not configured"})
+        # Fallback to local /agent endpoint if available
+        port = os.getenv("PORT", "8000")
+        local = f"http://127.0.0.1:{port}/agent"
+        os.environ["LANGGRAPH_RUN_URL"] = local
+        global LANGGRAPH_RUN_URL
+        LANGGRAPH_RUN_URL = local
 
     try:
         data = await request.json()
