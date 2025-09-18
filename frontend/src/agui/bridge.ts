@@ -3,6 +3,20 @@ import type { AppState, PatchOp } from "../state/types";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
 
+// --- Minimal AG-UI client shim using HTTP run endpoint ---
+export type RunInput = { messages: Array<{ role: string; content: string }>; context?: any };
+export type RunEvent = { type: string; data?: any; message?: string };
+
+export async function runViaBackend(input: RunInput, signal?: AbortSignal): Promise<Response> {
+  const res = await fetch(`${BASE_URL}/agui/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    signal
+  });
+  return res;
+}
+
 type SnapshotEvent = { state: AppState; ts: number };
 type DeltaEvent = { ops: PatchOp[] };
 

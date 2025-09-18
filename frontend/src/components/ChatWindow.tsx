@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as AdaptiveCards from "adaptivecards";
-import { BASE_URL } from "../agui/bridge";
+import { BASE_URL, runViaBackend } from "../agui/bridge";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
@@ -38,11 +38,7 @@ export default function ChatWindow() {
     let pid = findPanelId(st);
     if (pid) return pid;
     try {
-      await fetch(`${BASE_URL}/chat/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "spending checker" })
-      });
+      await runViaBackend({ messages: [{ role: "user", content: "spending checker" }] });
     } catch {}
     // poll up to ~2s
     for (let i = 0; i < 8; i++) {
@@ -117,11 +113,7 @@ export default function ChatWindow() {
           if (kind === "chat" && prompt) {
             (window as any).__onUserPrompt?.(data.label || prompt);
             try {
-              await fetch(`${BASE_URL}/chat/ask`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt })
-              });
+              await runViaBackend({ messages: [{ role: "user", content: prompt }] });
             } catch {}
           } else if (kind === "export") {
             try {
@@ -174,14 +166,39 @@ export default function ChatWindow() {
     setMsgs((m) => [...m, { role: "user", text: q }]);
 
     try {
-      const res = await fetch(`${BASE_URL}/chat/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: q })
-      });
-      const data = await res.json();
-      const reply = data?.message || "Okay — I’ve updated the panels.";
-      setMsgs((m) => [...m, { role: "assistant", text: reply }]);
+      const controller = new AbortController();
+      const res = await runViaBackend({ messages: [{ role: "user", content: q }] }, controller.signal);
+      if (!res.ok) throw new Error(await res.text());
+      // Consume SSE-style stream and surface assistant chat_message events
+      const reader = res.body?.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (reader) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() || "";
+        for (const evt of parts) {
+          const lines = evt.split("\n");
+          let eventName = "message";
+          let dataLine = "";
+          for (const line of lines) {
+            if (line.startsWith("event:")) eventName = line.slice(6).trim();
+            if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+          }
+          if (eventName && dataLine) {
+            try {
+              const payload = JSON.parse(dataLine);
+              if (payload?.name === "chat_message" && payload?.message) {
+                setMsgs((m) => [...m, { role: "assistant", text: payload.message }]);
+              }
+            } catch {}
+          }
+        }
+      }
+      // Fallback message if nothing streamed
+      setMsgs((m) => (m[m.length - 1]?.role === "assistant" ? m : [...m, { role: "assistant", text: "Okay — processed via LangGraph." }]));
     } catch {
       setMsgs((m) => [...m, { role: "assistant", text: "Sorry — I couldn’t reach the server." }]);
     }
@@ -210,11 +227,7 @@ export default function ChatWindow() {
                     if (it.kind === "chat" && it.prompt) {
                       (window as any).__onUserPrompt?.(it.label);
                       try {
-                        await fetch(`${BASE_URL}/chat/ask`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ prompt: it.prompt })
-                        });
+                        await runViaBackend({ messages: [{ role: "user", content: it.prompt }] });
                       } catch {}
                       // simple workflow branching
                       if (/spending checker/i.test(it.label)) {

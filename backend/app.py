@@ -21,12 +21,13 @@ import jsonpatch
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 
 from dotenv import load_dotenv
+import httpx
 load_dotenv() 
 
 
@@ -88,6 +89,9 @@ DELEGATION_RULES_PATH = POLICY_DIR / "delegation_rules.json"
 DOC_INDEXES: Dict[str, DocIndex] = {}
 CURRENT_DOC_ID: Optional[str] = None 
 # ---------------------------------------------------------
+
+# ---- LangGraph configuration (AG-UI) ----
+LANGGRAPH_RUN_URL = os.getenv("LANGGRAPH_RUN_URL")
 
 
 def _load_spend_policy() -> Dict[str, Any]:
@@ -376,6 +380,40 @@ async def stream(request: Request):
     async with clients_lock:
         clients.add(client)
     return EventSourceResponse(sse_generator(client))
+
+
+@app.post("/agui/run")
+async def agui_run(request: Request):
+    """
+    Proxy AG-UI run calls to a LangGraph deployment and stream SSE back to the client.
+    Configure target via env var LANGGRAPH_RUN_URL.
+    """
+    if not LANGGRAPH_RUN_URL:
+        return JSONResponse(status_code=500, content={"error": "LANGGRAPH_RUN_URL not configured"})
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = None
+
+    async def proxy_stream():
+        async with httpx.AsyncClient(timeout=None) as client:
+            try:
+                async with client.stream("POST", LANGGRAPH_RUN_URL, json=data) as resp:
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        payload = {"status": resp.status_code, "body": body.decode("utf-8", "ignore")}
+                        yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+                        return
+                    async for chunk in resp.aiter_bytes():
+                        # Pass through SSE from LangGraph unchanged
+                        if chunk:
+                            yield chunk
+            except Exception as e:
+                payload = {"status": 502, "body": f"proxy_failure: {type(e).__name__}: {e}"}
+                yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+
+    return StreamingResponse(proxy_stream(), media_type="text/event-stream")
 
 
 @app.post("/ingest/upload")
