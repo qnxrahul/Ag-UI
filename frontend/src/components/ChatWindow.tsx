@@ -216,6 +216,7 @@ export default function ChatWindow() {
     try {
       setLoading(true);
       const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
       const res = await runViaBackend({ messages: [{ role: "user", content: q }] }, controller.signal);
       const cacheHdr = res.headers.get("X-AGUI-Cache") || "";
       const savedHdr = res.headers.get("X-AGUI-Saved-Est") || undefined;
@@ -225,6 +226,7 @@ export default function ChatWindow() {
       const reader = res.body?.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let sawAssistant = false;
       while (reader) {
         const { value, done } = await reader.read();
         if (done) break;
@@ -244,13 +246,26 @@ export default function ChatWindow() {
               const payload = JSON.parse(dataLine);
               if (payload?.name === "chat_message" && payload?.message) {
                 setMsgs((m) => [...m, { role: "assistant", text: payload.message }]);
+                sawAssistant = true;
               }
             } catch {}
           }
         }
       }
+      clearTimeout(timeout);
       // Fallback message if nothing streamed
-      setMsgs((m) => (m[m.length - 1]?.role === "assistant" ? m : [...m, { role: "assistant", text: "Okay — processed via LangGraph." }]));
+      setMsgs((m) => (sawAssistant || m[m.length - 1]?.role === "assistant" ? m : [...m, { role: "assistant", text: "Okay — processed via LangGraph." }]));
+
+      // If no state change for spending prompt, fallback to local agent endpoint to create panels
+      if (/spend/i.test(q)) {
+        try {
+          const st = await fetchState();
+          const hasSpending = !!Object.values(st?.panel_configs || {}).find((cfg: any) => cfg?.type === "form_spending");
+          if (!hasSpending) {
+            await fetch(`${BASE_URL}/chat/ask`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q }) });
+          }
+        } catch {}
+      }
     } catch {
       setMsgs((m) => [...m, { role: "assistant", text: "Sorry — I couldn’t reach the server." }]);
     } finally {
