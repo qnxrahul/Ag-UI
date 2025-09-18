@@ -26,7 +26,11 @@ export async function runWithHttpAgent(
 ): Promise<void> {
   const raw = (import.meta as any).env?.VITE_AGENT_URL;
   const endpoint = (typeof raw === "string" && raw.trim()) ? raw.trim() : `${BASE_URL}/agent`;
-  const agent: any = new HttpAgent(endpoint);
+  const H: any = (HttpAgent as unknown as any);
+  let agent: any;
+  try { agent = new H({ baseUrl: endpoint }); }
+  catch { try { agent = new H({ endpoint }); }
+  catch { agent = new H(endpoint); } }
   const uuid = () => (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
   const getThreadId = () => {
     try {
