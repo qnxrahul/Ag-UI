@@ -52,7 +52,24 @@ export class AguiClient {
       this.onChange(this.state);
     });
 
+    // AG-UI alias
+    this.es.addEventListener("state.snapshot", (e: MessageEvent) => {
+      const payload = JSON.parse(e.data) as SnapshotEvent;
+      this.state = payload.state;
+      this.onChange(this.state);
+    });
+
     this.es.addEventListener("STATE_DELTA", (e: MessageEvent) => {
+      const payload = JSON.parse(e.data) as DeltaEvent;
+      if (!this.state) return;
+      const base = JSON.parse(JSON.stringify(this.state));
+      const next = applyPatch(base, payload.ops, false, false).newDocument;
+      this.state = next;
+      this.onChange(this.state);
+    });
+
+    // AG-UI alias
+    this.es.addEventListener("state.delta", (e: MessageEvent) => {
       const payload = JSON.parse(e.data) as DeltaEvent;
       if (!this.state) return;
       const base = JSON.parse(JSON.stringify(this.state));

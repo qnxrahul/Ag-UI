@@ -215,13 +215,24 @@ MAX_SSE_CLIENTS = int(os.getenv("AGUI_MAX_CLIENTS", "100"))
 
 
 async def broadcast(event: str, payload: Any) -> None:
-    message = {"event": event, "data": json.dumps(payload)}
+    # Map to AG-UI standard aliases as well
+    events: List[str] = [event]
+    if event == "STATE_SNAPSHOT":
+        events.append("state.snapshot")
+    elif event == "STATE_DELTA":
+        events.append("state.delta")
+    elif event == "TOOL_RESULT":
+        name = (payload or {}).get("name") if isinstance(payload, dict) else None
+        events.append("tool.result")
+        if name == "ui_card":
+            events.append("ui.card")
     async with clients_lock:
         for c in list(clients):
-            try:
-                await c.queue.put(message)
-            except Exception:
-                clients.discard(c)
+            for ev in events:
+                try:
+                    await c.queue.put({"event": ev, "data": json.dumps(payload)})
+                except Exception:
+                    clients.discard(c)
 
 
 async def sse_generator(client: Client):
@@ -229,6 +240,7 @@ async def sse_generator(client: Client):
     async with STATE_LOCK:
         snapshot = {"state": STATE, "ts": time.time()}
     yield {"event": "STATE_SNAPSHOT", "data": json.dumps(snapshot)}
+    yield {"event": "state.snapshot", "data": json.dumps(snapshot)}
     try:
         while True:
             try:
