@@ -28,6 +28,10 @@ from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 
 from dotenv import load_dotenv
+try:
+    from ag_ui_langgraph import add_langgraph_fastapi_endpoint
+except Exception:
+    add_langgraph_fastapi_endpoint = None  # type: ignore
 import httpx
 load_dotenv() 
 
@@ -57,6 +61,16 @@ app = FastAPI(title="AG-UI PoC Backend", version="0.2.0")
 try:
     if sys.platform.startswith("win"):
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+except Exception:
+    pass
+
+# Attach AG-UI LangGraph endpoint if available
+try:
+    if add_langgraph_fastapi_endpoint is not None:
+        from graph.agent import build_graph
+        graph_obj = build_graph()
+        if graph_obj is not None:
+            add_langgraph_fastapi_endpoint(app, graph_obj, "/agent")
 except Exception:
     pass
 app.add_middleware(
