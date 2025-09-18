@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as AdaptiveCards from "adaptivecards";
 import { BASE_URL, runViaBackend, getTokenMetrics } from "../agui/bridge";
-import { runWithHttpAgent, ToolDef } from "../agui/httpAgent";
+import { runWithHttpAgent } from "../agui/httpAgent";
+import type { ToolDef } from "../agui/httpAgent";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
