@@ -13,8 +13,9 @@ export async function runWithHttpAgent(
     const mod = await import("@ag-ui/client");
     const HttpAgent = (mod as any).HttpAgent as any;
     if (!HttpAgent) throw new Error("HttpAgent not available");
-    const url = (import.meta as any).env?.VITE_AGENT_URL || `${BASE_URL}/agui/run`;
-    const agent = new HttpAgent(url);
+    const raw = (import.meta as any).env?.VITE_AGENT_URL;
+    const endpoint = (typeof raw === "string" && raw.trim()) ? raw.trim() : `${BASE_URL}/agent`;
+    const agent = new HttpAgent(endpoint);
     const iter = await agent.run(input, { signal });
     for await (const ev of iter) {
       if (!ev) continue;
