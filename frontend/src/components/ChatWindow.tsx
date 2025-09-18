@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as AdaptiveCards from "adaptivecards";
 import { BASE_URL, runViaBackend, getTokenMetrics } from "../agui/bridge";
-import { runWithHttpAgent } from "../agui/httpAgent";
+import { runWithHttpAgent, ToolDef } from "../agui/httpAgent";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
@@ -222,8 +222,13 @@ export default function ChatWindow() {
       let usedHttpAgent = false;
       try {
         // Prefer AG-UI HttpAgent when available
+        const tools: ToolDef[] = [
+          { name: "panel.patch", description: "Apply JSON Patch", parameters: { type: "object", properties: { ops: { type: "array" } }, required: ["ops"] } },
+          { name: "export.csv", description: "Export CSV", parameters: { type: "object", properties: {} } },
+          { name: "open.panel", description: "Open panel", parameters: { type: "object", properties: { type: { type: "string" } }, required: ["type"] } },
+        ];
         await runWithHttpAgent(
-          { messages: [{ role: "user", content: q }] },
+          { runId: crypto.randomUUID(), messages: [{ role: "user", content: q }], tools },
           (ev) => {
             try {
               if ((ev as any)?.name === "chat_message" && (ev as any)?.message) {

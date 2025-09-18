@@ -1,11 +1,25 @@
 import { BASE_URL } from "./bridge";
 
-export type RunInput = { messages: Array<{ role: string; content: string }>; context?: any };
+export type ToolDef = {
+  name: string;
+  description: string;
+  parameters: { type: "object"; properties: Record<string, any>; required?: string[] };
+};
+
+export type ContextItem = { role: string; content: string };
+
+export type RunAgentInput = {
+  runId?: string;
+  messages: Array<{ role: string; content: string }>;
+  tools?: ToolDef[];
+  context?: ContextItem[];
+  forwardedProps?: Record<string, any>;
+};
 
 export type AguiEvent = { event: string; data?: any };
 
 export async function runWithHttpAgent(
-  input: RunInput,
+  input: RunAgentInput,
   onEvent: (ev: AguiEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
