@@ -1,5 +1,5 @@
 import { BASE_URL } from "./bridge";
-import { HttpAgent } from "@ag-ui/client";
+import * as AgClient from "@ag-ui/client";
 
 export type ToolDef = {
   name: string;
@@ -26,7 +26,13 @@ export async function runWithHttpAgent(
 ): Promise<void> {
   const raw = (import.meta as any).env?.VITE_AGENT_URL;
   const endpoint = (typeof raw === "string" && raw.trim()) ? raw.trim() : `${BASE_URL}/agent`;
-  const agent = new HttpAgent({ endpoint });
+  const AnyHttpAgent: any = (AgClient as any).HttpAgent;
+  let agent: any;
+  try {
+    agent = new AnyHttpAgent(endpoint);
+  } catch {
+    try { agent = new AnyHttpAgent({ baseUrl: endpoint }); } catch { agent = new AnyHttpAgent({ url: endpoint } as any); }
+  }
   const uuid = () => (globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
   const getThreadId = () => {
     try {
