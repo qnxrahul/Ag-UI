@@ -1052,9 +1052,9 @@ class ChatAskRequest(BaseModel):
 @app.post("/chat/ask")
 async def chat_ask(request: Request):
     """
-    Flexible chat endpoint:
-    Accepts {"prompt":"..."} or {"message":"..."} or {"text":"..."}.
-    Applies agent patches; broadcasts only if the new state validates.
+    AG-UI compliant chat run: accepts RunAgentInput-like payload or {prompt} and streams events
+    via the same path as /agui/run. This enables HttpAgent clients to call legacy chat path
+    without JSON responses.
     """
     try:
         data = await request.json()
@@ -1063,82 +1063,47 @@ async def chat_ask(request: Request):
     except Exception as e:
         return JSONResponse(status_code=422, content={"error": f"Invalid JSON: {e}"})
 
-    prompt_raw = data.get("prompt") or data.get("message") or data.get("text")
-    prompt = (prompt_raw or "").strip()
-    if not prompt:
-        return JSONResponse(status_code=422, content={"error": "Missing 'prompt' string"})
+    # Normalize to RunAgentInput
+    if "messages" not in data:
+        prompt_raw = data.get("prompt") or data.get("message") or data.get("text")
+        if not prompt_raw:
+            return JSONResponse(status_code=422, content={"error": "Missing 'messages' or 'prompt'"})
+        data = {"messages": [{"role": "user", "content": str(prompt_raw)}]}
 
-    doc_id = STATE.get("meta", {}).get("doc_id")
-    if not doc_id or doc_id not in DOC_INDEXES:
-        return JSONResponse(status_code=400, content={"error": "No document uploaded yet"})
-
-    index = DOC_INDEXES[doc_id]
-
+    # Inject available tools schema
     try:
-        intent = detect_intent(prompt)
-        if intent == "spending":
-            result = run_spending_checker(doc_id, index, prompt)
-        elif intent == "roles_sod":
-            result = run_roles_sod(doc_id, index, prompt)
-        elif intent == "approval_chain":
-            result = run_approval_chain(doc_id, index, prompt)
-        elif intent == "controls":
-            result = run_control_checklists(doc_id, index, prompt)
-        elif intent == "exceptions":
-            result = run_exceptions_tracker(doc_id, index, prompt)
-        else:
-            result = {
-                "patches": [],
-                "message": (
-                    "I can create panels for:\n"
-                    "• Spending Checker\n"
-                    "• Roles & SoD\n"
-                    "• Approval Chain\n"
-                    "• Control Calendar & Checklists\n"
-                    "• Exceptions & Waiver Tracker\n\n"
-                    "Try: “Spending checker”, “Roles & SoD”, “Approval chain”, "
-                    "“Control calendar”, or “Exceptions tracker”."
-                ),
-            }
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Agent failed: {type(e).__name__}: {e}"})
-
-
-    patches = result.get("patches") or []
-
-    try:
-        async with STATE_LOCK:
-            base = json.loads(json.dumps(STATE))
-            patched = jsonpatch.apply_patch(base, patches, in_place=False)
-            validated_model = _validate_state(patched)   
-            new_state = validated_model.model_dump()
-            new_state["meta"]["server_timestamp"] = time.time()
-            server_op = {"op": "replace", "path": "/meta/server_timestamp", "value": new_state["meta"]["server_timestamp"]}
-            for k in list(STATE.keys()):
-                STATE[k] = new_state[k]
-    except Exception as e:
-        global LAST_ERROR
-        LAST_ERROR = {"type": "chat_ask_apply", "detail": str(e), "patches": patches}
-        return JSONResponse(status_code=500, content={"error": f"State update failed: {type(e).__name__}: {e}"})
-
-    await broadcast("STATE_DELTA", {"ops": patches + [server_op]})
-
-    if result.get("message"):
-        await broadcast("TOOL_RESULT", {"name": "chat_message", "message": result["message"]})
-
-    # Provide actionable suggestions/buttons for the UI
-    try:
-        suggestions = [
-            {"label": "Open Control Calendar", "kind": "chat", "prompt": "control calendar"},
-            {"label": "Open Exceptions Tracker", "kind": "chat", "prompt": "exceptions"},
-            {"label": "Open Approval Chain", "kind": "chat", "prompt": "approval chain"},
-            {"label": "Export CSV", "kind": "export"},
-        ]
-        await broadcast("TOOL_RESULT", {"name": "action_items", "items": suggestions})
+        tools = []
+        for t in TOOLS.values():
+            tools.append({
+                "name": t.name,
+                "description": t.description or t.title,
+                "parameters": t.schema or {"type": "object", "properties": {}}
+            })
+        data.setdefault("tools", tools)
     except Exception:
         pass
 
-    return {"ok": True}
+    # Forward to AG-UI run proxy (keeps caching/limits)
+    port = os.getenv("PORT", "8000")
+    run_url = f"http://127.0.0.1:{port}/agui/run"
+
+    async def stream_forward():
+        async with httpx.AsyncClient(timeout=None) as client:
+            try:
+                async with client.stream("POST", run_url, json=data) as resp:
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        payload = {"status": resp.status_code, "body": body.decode("utf-8", "ignore")}
+                        yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+                        return
+                    async for chunk in resp.aiter_bytes():
+                        if chunk:
+                            yield chunk
+            except Exception as e:
+                payload = {"status": 502, "body": f"proxy_failure: {type(e).__name__}: {e}"}
+                yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+
+    return StreamingResponse(stream_forward(), media_type="text/event-stream")
 
 
 # ---------- end chat routes ----------
