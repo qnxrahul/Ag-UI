@@ -92,6 +92,8 @@ CURRENT_DOC_ID: Optional[str] = None
 
 # ---- LangGraph configuration (AG-UI) ----
 LANGGRAPH_RUN_URL = os.getenv("LANGGRAPH_RUN_URL")
+MAX_RUN_SECONDS = float(os.getenv("AGUI_MAX_RUN_SECONDS", "20"))
+EARLY_STOP_ON_TOOL = (os.getenv("AGUI_EARLY_STOP_ON_TOOL", "1") != "0")
 
 # ---- Token-aware run cache & metrics ----
 RUN_CACHE: Dict[str, Dict[str, Any]] = {}
@@ -144,6 +146,40 @@ def detect_intent(prompt: str) -> str:
     if "exception" in q or "waiver" in q or "sole source" in q or "emergency" in q or "deviation" in q:
         return "exceptions"
     return "unknown"
+
+
+def _controls_bucket_snapshot(state: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        panel_cfgs = (state or {}).get("panel_configs") or {}
+        out: Dict[str, Any] = {}
+        for pid, cfg in panel_cfgs.items():
+            ptype = (cfg or {}).get("type")
+            ctrls = (cfg or {}).get("controls") or {}
+            if ptype == "form_spending":
+                amt = ctrls.get("amount")
+                cat = (ctrls.get("category") or "").strip().lower() or None
+                if isinstance(amt, (int, float)):
+                    try:
+                        amt = int(max(0, round(float(amt) / 1000.0)) * 1000)
+                    except Exception:
+                        amt = None
+                out[pid] = {"type": ptype, "amount_bucket": amt, "category": cat}
+            elif ptype == "approval_chain":
+                amt = ctrls.get("amount")
+                inst = (ctrls.get("instrument") or "").strip().lower() or None
+                if isinstance(amt, (int, float)):
+                    try:
+                        amt = int(max(0, round(float(amt) / 1000.0)) * 1000)
+                    except Exception:
+                        amt = None
+                out[pid] = {"type": ptype, "amount_bucket": amt, "instrument": inst}
+            elif ptype == "exceptions_tracker":
+                entry = ctrls.get("entry") or {}
+                kw = (entry.get("keywords") or "").strip().lower() or None
+                out[pid] = {"type": ptype, "kw": kw}
+        return out
+    except Exception:
+        return {}
 
 
 
@@ -429,11 +465,15 @@ async def agui_run(request: Request):
                 idx = DOC_INDEXES[doc_id]
                 # use the prompt directly; fallback to intent label if empty
                 base_q = norm_prompt or intent
-                for c in idx.top_k(base_q, k=6):
+                # adaptive k: start small, can increase based on simple heuristics later
+                k = 6
+                for c in idx.top_k(base_q, k=k):
                     top_ids.append(c.id)
             except Exception:
                 top_ids = []
-        key_obj = {"intent": intent, "doc": doc_id, "ids": top_ids, "prompt": norm_prompt}
+        # include bucketing snapshot of controls to widen hit rate
+        ctl = _controls_bucket_snapshot(STATE)
+        key_obj = {"intent": intent, "doc": doc_id, "ids": top_ids, "prompt": norm_prompt, "controls": ctl}
         key = json.dumps(key_obj, sort_keys=True)
     except Exception:
         # fallback to raw body key
@@ -478,9 +518,15 @@ async def agui_run(request: Request):
                         decoder = httpx.Decoder()
                     except Exception:
                         decoder = None
+                    start_ts = time.time()
+                    saw_tool = False
                     async for chunk in resp.aiter_bytes():
                         if not chunk:
                             continue
+                        # enforce latency cap
+                        if (time.time() - start_ts) > MAX_RUN_SECONDS:
+                            yield b"event: INFO\n" + b"data: {\"reason\":\"time_cap\"}\n\n"
+                            break
                         buffer.extend(chunk)
                         # Pass through SSE from LangGraph unchanged
                         yield chunk
@@ -498,6 +544,12 @@ async def agui_run(request: Request):
                                             ev = line[6:].strip().lower()
                                         elif line.startswith("data:"):
                                             dt = line[5:].strip()
+                                    if EARLY_STOP_ON_TOOL and ev in ("tool_result", "tool", "ui_card"):
+                                        saw_tool = True
+                                    if EARLY_STOP_ON_TOOL and saw_tool:
+                                        yield b"event: INFO\n" + b"data: {\"reason\":\"early_stop_tool\"}\n\n"
+                                        # stop upstream stream
+                                        break
                                     if ev in ("usage", "llm_usage") and dt:
                                         try:
                                             obj = json.loads(dt)
@@ -509,6 +561,7 @@ async def agui_run(request: Request):
                                             pass
                         except Exception:
                             pass
+                    # end for
                     # Store in cache
                     try:
                         if key is not None:

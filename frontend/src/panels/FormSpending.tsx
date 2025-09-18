@@ -84,6 +84,7 @@ export default function FormSpending(
   const data = cfg.data || {};
   const rules = data.rules || {};
   const citations = data.citations || [];
+  const suggestions = data.suggestions_ui || [];
   const steps = data.required_steps || [];
 
   const quickAmounts: number[] = (() => {
@@ -153,6 +154,26 @@ export default function FormSpending(
                 title="Set amount"
               >
                 {Math.round(v).toLocaleString()}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {Array.isArray(suggestions) && suggestions.length > 0 && (
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Suggestions</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {suggestions.map((s: any, i: number) => (
+              <button
+                key={i}
+                onClick={async () => {
+                  const ops = (s?.data?.patch || []) as any[];
+                  if (ops?.length) await sendPatch?.(ops as any);
+                }}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ddd", background: "#f7f7ff", cursor: "pointer" }}
+              >
+                {s?.title || "Apply"}
               </button>
             ))}
           </div>
