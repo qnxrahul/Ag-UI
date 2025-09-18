@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import csv
 import json
 import os
@@ -52,6 +53,12 @@ from state_models import (
 )
 
 app = FastAPI(title="AG-UI PoC Backend", version="0.2.0")
+# Prefer Proactor loop on Windows to avoid select() fd limits
+try:
+    if sys.platform.startswith("win"):
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+except Exception:
+    pass
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -190,6 +197,7 @@ class Client:
 
 clients: Set[Client] = set()
 clients_lock = asyncio.Lock()
+MAX_SSE_CLIENTS = int(os.getenv("AGUI_MAX_CLIENTS", "100"))
 
 
 async def broadcast(event: str, payload: Any) -> None:
@@ -427,6 +435,12 @@ async def debug_last():
 async def stream(request: Request):
     client = Client()
     async with clients_lock:
+        if len(clients) >= MAX_SSE_CLIENTS:
+            try:
+                # drop an arbitrary existing client to respect cap
+                clients.discard(next(iter(clients)))
+            except Exception:
+                pass
         clients.add(client)
     return EventSourceResponse(sse_generator(client))
 
