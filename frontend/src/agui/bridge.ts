@@ -17,6 +17,16 @@ export async function runViaBackend(input: RunInput, signal?: AbortSignal): Prom
   return res;
 }
 
+export async function getTokenMetrics(): Promise<{ saved_tokens_est: number; used_tokens_reported: number; cache_entries: number; cache_ttl_secs: number } | null> {
+  try {
+    const res = await fetch(`${BASE_URL}/metrics/tokens`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 type SnapshotEvent = { state: AppState; ts: number };
 type DeltaEvent = { ops: PatchOp[] };
 

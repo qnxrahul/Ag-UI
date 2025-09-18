@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as AdaptiveCards from "adaptivecards";
-import { BASE_URL, runViaBackend } from "../agui/bridge";
+import { BASE_URL, runViaBackend, getTokenMetrics } from "../agui/bridge";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
@@ -15,6 +15,9 @@ export default function ChatWindow() {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const initialActionsRef = useRef<ActionItem[] | null>(null);
   const [flow, setFlow] = useState<{ name: null | "spending"; step?: string; data?: any }>({ name: null });
+  const [loading, setLoading] = useState(false);
+  const [lastTokenInfo, setLastTokenInfo] = useState<{ cache: string; savedEst?: number } | null>(null);
+  const [totals, setTotals] = useState<{ saved?: number; used?: number } | null>(null);
 
   async function fetchState() {
     try {
@@ -75,6 +78,17 @@ export default function ChatWindow() {
 
   useEffect(() => {
     fetch(`${BASE_URL}/chat/open`, { method: "POST" }).catch(() => {});
+    // Fetch token totals on mount and every 10s
+    let alive = true;
+    const tick = async () => {
+      const metrics = await getTokenMetrics();
+      if (metrics && alive) {
+        setTotals({ saved: metrics.saved_tokens_est, used: metrics.used_tokens_reported });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 10000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
 
   useEffect(() => {
@@ -166,8 +180,12 @@ export default function ChatWindow() {
     setMsgs((m) => [...m, { role: "user", text: q }]);
 
     try {
+      setLoading(true);
       const controller = new AbortController();
       const res = await runViaBackend({ messages: [{ role: "user", content: q }] }, controller.signal);
+      const cacheHdr = res.headers.get("X-AGUI-Cache") || "";
+      const savedHdr = res.headers.get("X-AGUI-Saved-Est") || undefined;
+      if (cacheHdr) setLastTokenInfo({ cache: cacheHdr, savedEst: savedHdr ? Number(savedHdr) : undefined });
       if (!res.ok) throw new Error(await res.text());
       // Consume SSE-style stream and surface assistant chat_message events
       const reader = res.body?.getReader();
@@ -201,6 +219,8 @@ export default function ChatWindow() {
       setMsgs((m) => (m[m.length - 1]?.role === "assistant" ? m : [...m, { role: "assistant", text: "Okay — processed via LangGraph." }]));
     } catch {
       setMsgs((m) => [...m, { role: "assistant", text: "Sorry — I couldn’t reach the server." }]);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -209,9 +229,25 @@ export default function ChatWindow() {
       <Card.Header className="d-flex align-items-center gap-2" style={{ background: "#ffffff" }}>
         <span>Conversational Assistant</span>
         <Badge bg="secondary">Beta</Badge>
+        {lastTokenInfo && (
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#555" }}>
+            Cache: {lastTokenInfo.cache}
+            {typeof lastTokenInfo.savedEst === "number" && ` · Saved est: ${Math.max(0, Math.floor(lastTokenInfo.savedEst || 0)).toLocaleString()} tok`}
+          </span>
+        )}
+        {totals && (
+          <span style={{ marginLeft: 12, fontSize: 12, color: "#555" }}>
+            Total saved est: {(Math.floor(totals.saved || 0)).toLocaleString()} · Total used reported: {(Math.floor(totals.used || 0)).toLocaleString()}
+          </span>
+        )}
       </Card.Header>
       <Card.Body ref={listRef as any} className="chat-panel">
         <div className="chat-bubbles">
+          {loading && (
+            <div className="bubble bubble-assistant" style={{ opacity: 0.8 }}>
+              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" /> Processing…
+            </div>
+          )}
           {msgs.map((m: ChatMsg, i: number) => (
             <div key={i} className={`bubble ${m.role === "user" ? "bubble-user" : "bubble-assistant"}`}>
               {m.text}

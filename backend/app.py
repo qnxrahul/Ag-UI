@@ -93,6 +93,19 @@ CURRENT_DOC_ID: Optional[str] = None
 # ---- LangGraph configuration (AG-UI) ----
 LANGGRAPH_RUN_URL = os.getenv("LANGGRAPH_RUN_URL")
 
+# ---- Token-aware run cache & metrics ----
+RUN_CACHE: Dict[str, Dict[str, Any]] = {}
+CACHE_TTL_SECS = 300
+TOKENS_SAVED_EST: float = 0.0
+TOKENS_USED_REPORTED: float = 0.0
+
+def _estimate_input_tokens(payload: Any) -> int:
+    try:
+        s = json.dumps(payload, ensure_ascii=False)
+        return int(max(1, len(s) / 4))
+    except Exception:
+        return 0
+
 
 def _load_spend_policy() -> Dict[str, Any]:
     with open(SPEND_POLICY_PATH, "r", encoding="utf-8") as f:
@@ -396,6 +409,33 @@ async def agui_run(request: Request):
     except Exception:
         data = None
 
+    # Cache key based on normalized input
+    key = None
+    if isinstance(data, dict):
+        try:
+            key = json.dumps(data, sort_keys=True)
+        except Exception:
+            key = None
+    now = time.time()
+    if key and key in RUN_CACHE:
+        entry = RUN_CACHE.get(key) or {}
+        if now - float(entry.get("ts", 0)) <= CACHE_TTL_SECS:
+            saved = int(entry.get("saved_est", 0))
+            async def replay():
+                buf: bytes = entry.get("bytes", b"")
+                # Return the exact cached SSE content
+                yield buf
+            # Update global saved counter (best-effort)
+            try:
+                global TOKENS_SAVED_EST
+                TOKENS_SAVED_EST += float(saved)
+            except Exception:
+                pass
+            return StreamingResponse(replay(), media_type="text/event-stream", headers={
+                "X-AGUI-Cache": "HIT",
+                "X-AGUI-Saved-Est": str(saved)
+            })
+
     async def proxy_stream():
         async with httpx.AsyncClient(timeout=None) as client:
             try:
@@ -405,15 +445,67 @@ async def agui_run(request: Request):
                         payload = {"status": resp.status_code, "body": body.decode("utf-8", "ignore")}
                         yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
                         return
+                    # Accumulate for caching and inspect usage events
+                    buffer = bytearray()
+                    decoder = None
+                    try:
+                        decoder = httpx.Decoder()
+                    except Exception:
+                        decoder = None
                     async for chunk in resp.aiter_bytes():
+                        if not chunk:
+                            continue
+                        buffer.extend(chunk)
                         # Pass through SSE from LangGraph unchanged
-                        if chunk:
-                            yield chunk
+                        yield chunk
+                        # Try to capture usage events of form: "event: USAGE" with JSON tokens
+                        try:
+                            text = chunk.decode("utf-8", "ignore")
+                            if "event:" in text and "data:" in text:
+                                blocks = text.split("\n\n")
+                                for blk in blocks:
+                                    if not blk.strip():
+                                        continue
+                                    ev = None; dt = None
+                                    for line in blk.split("\n"):
+                                        if line.startswith("event:"):
+                                            ev = line[6:].strip().lower()
+                                        elif line.startswith("data:"):
+                                            dt = line[5:].strip()
+                                    if ev in ("usage", "llm_usage") and dt:
+                                        try:
+                                            obj = json.loads(dt)
+                                            used = float(obj.get("total_tokens") or obj.get("total") or 0)
+                                            if used:
+                                                global TOKENS_USED_REPORTED
+                                                TOKENS_USED_REPORTED += used
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
+                    # Store in cache
+                    try:
+                        if key is not None:
+                            inp_est = _estimate_input_tokens(data)
+                            out_est = int(len(buffer) / 4)
+                            RUN_CACHE[key] = {"bytes": bytes(buffer), "ts": time.time(), "saved_est": inp_est + out_est}
+                    except Exception:
+                        pass
             except Exception as e:
                 payload = {"status": 502, "body": f"proxy_failure: {type(e).__name__}: {e}"}
                 yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
 
-    return StreamingResponse(proxy_stream(), media_type="text/event-stream")
+    return StreamingResponse(proxy_stream(), media_type="text/event-stream", headers={"X-AGUI-Cache": "MISS"})
+
+
+@app.get("/metrics/tokens")
+async def token_metrics():
+    return {
+        "saved_tokens_est": TOKENS_SAVED_EST,
+        "used_tokens_reported": TOKENS_USED_REPORTED,
+        "cache_entries": len(RUN_CACHE),
+        "cache_ttl_secs": CACHE_TTL_SECS,
+    }
 
 
 @app.post("/ingest/upload")
