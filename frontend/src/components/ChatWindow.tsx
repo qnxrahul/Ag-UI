@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as AdaptiveCards from "adaptivecards";
 import { BASE_URL, runViaBackend, getTokenMetrics } from "../agui/bridge";
+import { runWithHttpAgent } from "../agui/httpAgent";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
@@ -217,38 +218,56 @@ export default function ChatWindow() {
       setLoading(true);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
-      const res = await runViaBackend({ messages: [{ role: "user", content: q }] }, controller.signal);
-      const cacheHdr = res.headers.get("X-AGUI-Cache") || "";
-      const savedHdr = res.headers.get("X-AGUI-Saved-Est") || undefined;
-      if (cacheHdr) setLastTokenInfo({ cache: cacheHdr, savedEst: savedHdr ? Number(savedHdr) : undefined });
-      if (!res.ok) throw new Error(await res.text());
-      // Consume SSE-style stream and surface assistant chat_message events
-      const reader = res.body?.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
       let sawAssistant = false;
-      while (reader) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() || "";
-        for (const evt of parts) {
-          const lines = evt.split("\n");
-          let eventName = "message";
-          let dataLine = "";
-          for (const line of lines) {
-            if (line.startsWith("event:")) eventName = line.slice(6).trim();
-            if (line.startsWith("data:")) dataLine += line.slice(5).trim();
-          }
-          if (eventName && dataLine) {
+      let usedHttpAgent = false;
+      try {
+        // Prefer AG-UI HttpAgent when available
+        await runWithHttpAgent(
+          { messages: [{ role: "user", content: q }] },
+          (ev) => {
             try {
-              const payload = JSON.parse(dataLine);
-              if (payload?.name === "chat_message" && payload?.message) {
-                setMsgs((m) => [...m, { role: "assistant", text: payload.message }]);
+              if ((ev as any)?.name === "chat_message" && (ev as any)?.message) {
+                setMsgs((m) => [...m, { role: "assistant", text: (ev as any).message }]);
                 sawAssistant = true;
               }
             } catch {}
+          },
+          controller.signal
+        );
+        usedHttpAgent = true;
+      } catch {
+        // Fallback to plain fetch proxy
+        const res = await runViaBackend({ messages: [{ role: "user", content: q }] }, controller.signal);
+        const cacheHdr = res.headers.get("X-AGUI-Cache") || "";
+        const savedHdr = res.headers.get("X-AGUI-Saved-Est") || undefined;
+        if (cacheHdr) setLastTokenInfo({ cache: cacheHdr, savedEst: savedHdr ? Number(savedHdr) : undefined });
+        if (!res.ok) throw new Error(await res.text());
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (reader) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const evt of parts) {
+            const lines = evt.split("\n");
+            let eventName = "message";
+            let dataLine = "";
+            for (const line of lines) {
+              if (line.startsWith("event:")) eventName = line.slice(6).trim();
+              if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+            }
+            if (eventName && dataLine) {
+              try {
+                const payload = JSON.parse(dataLine);
+                if (payload?.name === "chat_message" && payload?.message) {
+                  setMsgs((m) => [...m, { role: "assistant", text: payload.message }]);
+                  sawAssistant = true;
+                }
+              } catch {}
+            }
           }
         }
       }
