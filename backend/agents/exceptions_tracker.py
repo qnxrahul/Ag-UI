@@ -121,6 +121,22 @@ def run_exceptions_tracker(doc_id: str, index: DocIndex, user_query: str) -> Dic
     }
 
     panel_id = f"Panel:exceptions:{doc_id}"
+    # Build UI suggestions: toggle suggested approvals/docs/reporting to true
+    suggestions_ui = []
+    try:
+        sugg = {
+            "approvals": sorted({a for pol in (result.get("exception_policies") or []) for a in (pol.get("requires", {}).get("approvals") or [])}),
+            "documentation": sorted({d for pol in (result.get("exception_policies") or []) for d in (pol.get("requires", {}).get("documentation") or [])}),
+            "reporting": sorted({r for pol in (result.get("exception_policies") or []) for r in (pol.get("requires", {}).get("reporting") or [])}),
+        }
+        for k in sugg.get("approvals", []):
+            suggestions_ui.append({"type":"Action.Submit","title":f"Got approval: {k}","data":{"patch":[{"op":"add","path":f"/panel_configs/{panel_id}/controls/entry/approvals/{k}","value":True}]}})
+        for k in sugg.get("documentation", []):
+            suggestions_ui.append({"type":"Action.Submit","title":f"Got doc: {k}","data":{"patch":[{"op":"add","path":f"/panel_configs/{panel_id}/controls/entry/documentation/{k}","value":True}]}})
+        for k in sugg.get("reporting", []):
+            suggestions_ui.append({"type":"Action.Submit","title":f"Done: {k}","data":{"patch":[{"op":"add","path":f"/panel_configs/{panel_id}/controls/entry/reporting/{k}","value":True}]}})
+    except Exception:
+        pass
     patches = [
         {"op":"add","path":"/panels/-","value": panel_id},
         {"op":"add","path":f"/panel_configs/{panel_id}","value":{
@@ -140,7 +156,8 @@ def run_exceptions_tracker(doc_id: str, index: DocIndex, user_query: str) -> Dic
                 "extracted": result,
                 "suggestions": suggestions,
                 "status": { "approvals": [], "documentation": [], "reporting": [] },
-                "citations": citations
+                "citations": citations,
+                "suggestions_ui": suggestions_ui
             }
         }}
     ]

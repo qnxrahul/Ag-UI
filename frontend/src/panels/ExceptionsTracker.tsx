@@ -228,6 +228,7 @@ export default function ExceptionsTracker(props: {
   const data = cfg.data || {};
   const status = data.status || { approvals: [], documentation: [], reporting: [] };
   const suggestions = data.suggestions || { approvals: [], documentation: [], reporting: [] };
+  const suggestionsUi = data.suggestions_ui || [];
   const citations = data.citations || [];
   const extracted = data.extracted || {};
 
@@ -426,6 +427,26 @@ export default function ExceptionsTracker(props: {
           <div style={{ color: "#888" }}>(no citations)</div>
         )}
       </details>
+
+      {Array.isArray(suggestionsUi) && suggestionsUi.length > 0 && (
+        <section>
+          <div style={sectionTitle}>Suggestions</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {suggestionsUi.map((s: any, i: number) => (
+              <button
+                key={i}
+                onClick={async () => {
+                  const ops = (s?.data?.patch || []) as any[];
+                  if (ops?.length) await sendPatch?.(ops as any);
+                }}
+                style={btn}
+              >
+                {s?.title || "Apply"}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Debug (collapsed) */}
       <details className="details">

@@ -67,3 +67,15 @@ export default tseslint.config([
   },
 ])
 ```
+## Run
+
+```bash
+npm ci
+npm run dev
+```
+
+## AG-UI LangGraph integration
+
+- Backend must expose `/agui/run` that proxies to your LangGraph deployment. Configure the target with `LANGGRAPH_RUN_URL` environment variable on the backend.
+- Frontend sends user prompts via a minimal `run()` adapter that posts to `/agui/run` and consumes SSE events. See `src/agui/bridge.ts` (`runViaBackend`).
+- Set `VITE_BACKEND_URL` if your backend is not on `http://localhost:8000`.

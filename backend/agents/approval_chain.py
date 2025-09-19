@@ -227,13 +227,42 @@ ADDITIONAL CONSTRAINTS:
         citations.append({"key": "approval.evidence", "snippet": snippet, "page": id_to_page.get(cid), "chunk_id": cid})
 
     panel_id = f"Panel:approval_chain:{doc_id}"
+    suggestions_ui = []
+    # buttons to set amount to each numeric level boundary
+    try:
+        nums = []
+        for lvl in (result.get("levels") or []):
+            c = (lvl.get("condition") or {})
+            if isinstance(c.get("value"), (int,float)):
+                nums.append(float(c.get("value")))
+            rng = c.get("range") or {}
+            if isinstance(rng.get("min"), (int,float)):
+                nums.append(float(rng.get("min")))
+            if isinstance(rng.get("max"), (int,float)):
+                nums.append(float(rng.get("max")))
+        for v in sorted({int(x) for x in nums if x is not None}):
+            suggestions_ui.append({
+                "type": "Action.Submit",
+                "title": f"Set amount to {v}",
+                "data": {"patch": [{"op":"add","path": f"/panel_configs/{panel_id}/controls/amount", "value": v}]}
+            })
+        # instrument quick set
+        for inst in ("cheque","payment","purchase"):
+            suggestions_ui.append({
+                "type": "Action.Submit",
+                "title": f"Instrument: {inst}",
+                "data": {"patch": [{"op":"add","path": f"/panel_configs/{panel_id}/controls/instrument", "value": inst}]}
+            })
+    except Exception:
+        pass
+
     patches = [
         {"op": "add", "path": "/panels/-", "value": panel_id},
         {"op": "add", "path": f"/panel_configs/{panel_id}", "value": {
             "type": "approval_chain",
             "title": "Approval Chain",
             "controls": { "amount": None, "instrument": None },
-            "data": { "rules": result, "chain": [], "citations": citations }
+            "data": { "rules": result, "chain": [], "citations": citations, "suggestions_ui": suggestions_ui }
         }}
     ]
     message = "I’ve created an **Approval Chain** panel. Enter an amount and (optionally) an instrument (e.g., cheque) to see who must approve."

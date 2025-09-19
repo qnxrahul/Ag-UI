@@ -84,7 +84,27 @@ export default function FormSpending(
   const data = cfg.data || {};
   const rules = data.rules || {};
   const citations = data.citations || [];
+  const suggestions = data.suggestions_ui || [];
   const steps = data.required_steps || [];
+
+  const quickAmounts: number[] = (() => {
+    try {
+      const tiers: any[] = (rules?.tiers || []) as any[];
+      const vals: number[] = [];
+      for (const t of tiers) {
+        const cond = (t?.condition || {}) as any;
+        if (typeof cond.value === "number") vals.push(cond.value);
+        const rng = cond.range || {};
+        if (typeof rng.min === "number") vals.push(rng.min);
+        if (typeof rng.max === "number") vals.push(rng.max);
+      }
+      const uniq = Array.from(new Set(vals.filter((v) => Number.isFinite(v))));
+      uniq.sort((a, b) => a - b);
+      return uniq.slice(0, 6);
+    } catch {
+      return [];
+    }
+  })();
 
   const setControl = async (key: string, val: any) => {
     const path = `/panel_configs/${panelId}/controls/${key}`;
@@ -121,6 +141,44 @@ export default function FormSpending(
         <div style={{ fontWeight: 600, marginBottom: 6 }}>Required Steps</div>
         <Chips items={steps} />
       </div>
+
+      {quickAmounts.length > 0 && (
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Quick amounts</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {quickAmounts.map((v) => (
+              <button
+                key={v}
+                onClick={() => setControl("amount", v)}
+                style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #c7d2fe", background: "#eef2ff", color: "#1e3a8a", cursor: "pointer" }}
+                title="Set amount"
+              >
+                {Math.round(v).toLocaleString()}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {Array.isArray(suggestions) && suggestions.length > 0 && (
+        <div>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Suggestions</div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {suggestions.map((s: any, i: number) => (
+              <button
+                key={i}
+                onClick={async () => {
+                  const ops = (s?.data?.patch || []) as any[];
+                  if (ops?.length) await sendPatch?.(ops as any);
+                }}
+                style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ddd", background: "#f7f7ff", cursor: "pointer" }}
+              >
+                {s?.title || "Apply"}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Citations (collapsed) */}
       <details className="details">
