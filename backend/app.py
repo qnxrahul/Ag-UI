@@ -719,9 +719,9 @@ async def agui_run(request: Request):
             })
 
     async def proxy_stream():
-        async with httpx.AsyncClient(timeout=None) as client:
+        async with httpx.AsyncClient(timeout=None, limits=httpx.Limits(max_connections=20, max_keepalive_connections=0)) as client:
             try:
-                async with client.stream("POST", run_url, json=data) as resp:
+                async with client.stream("POST", run_url, json=data, headers={"Connection":"close"}) as resp:
                     if resp.status_code != 200:
                         body = await resp.aread()
                         payload = {"status": resp.status_code, "body": body.decode("utf-8", "ignore")}
@@ -742,7 +742,7 @@ async def agui_run(request: Request):
                         # enforce latency cap
                         if (time.time() - start_ts) > MAX_RUN_SECONDS:
                             yield b"event: INFO\n" + b"data: {\"reason\":\"time_cap\"}\n\n"
-                            break
+                            return
                         buffer.extend(chunk)
                         # Pass through SSE from LangGraph unchanged
                         yield chunk
@@ -764,8 +764,7 @@ async def agui_run(request: Request):
                                         saw_tool = True
                                     if EARLY_STOP_ON_TOOL and saw_tool:
                                         yield b"event: INFO\n" + b"data: {\"reason\":\"early_stop_tool\"}\n\n"
-                                        # stop upstream stream
-                                        break
+                                        return
                                     if ev in ("usage", "llm_usage") and dt:
                                         try:
                                             obj = json.loads(dt)
