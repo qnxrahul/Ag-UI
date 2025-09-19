@@ -146,6 +146,7 @@ RUN_CACHE: Dict[str, Dict[str, Any]] = {}
 CACHE_TTL_SECS = 300
 TOKENS_SAVED_EST: float = 0.0
 TOKENS_USED_REPORTED: float = 0.0
+THREAD_MEMORY: Dict[str, Dict[str, Any]] = {}
 
 def _estimate_input_tokens(payload: Any) -> int:
     try:
@@ -192,6 +193,19 @@ def detect_intent(prompt: str) -> str:
     if "exception" in q or "waiver" in q or "sole source" in q or "emergency" in q or "deviation" in q:
         return "exceptions"
     return "unknown"
+
+
+def _thread_context_summary() -> str:
+    try:
+        meta = STATE.get("meta", {}) or {}
+        doc = meta.get("doc_id") or meta.get("docName") or "(none)"
+        cfgs = (STATE.get("panel_configs") or {})
+        ptypes = sorted({(cfg or {}).get("type") for cfg in cfgs.values() if isinstance(cfg, dict)})
+        return (
+            f"doc_id={doc} panels={len(cfgs)} types={','.join([t for t in ptypes if t])}"
+        )
+    except Exception:
+        return ""
 
 
 def _controls_bucket_snapshot(state: Dict[str, Any]) -> Dict[str, Any]:
@@ -666,6 +680,24 @@ async def agui_run(request: Request):
                 key = json.dumps(data, sort_keys=True)
             except Exception:
                 key = None
+    # Thread memory/context enrichment
+    try:
+        model = RunAgentInputModel(**(data or {}))
+        tid = model.threadId or "default"
+        mem = THREAD_MEMORY.setdefault(tid, {"hints": [], "last": None})
+        # Attach context hint
+        hint = _thread_context_summary()
+        if hint:
+            data.setdefault("context", [])
+            data["context"].append({"role": "system", "content": hint})
+        # Track last user
+        if model.messages:
+            last_user = next((m for m in reversed(model.messages) if (m.role or "").lower() == "user"), None)
+            if last_user:
+                mem["last"] = last_user.content
+    except Exception:
+        pass
+
     now = time.time()
     if key and key in RUN_CACHE:
         entry = RUN_CACHE.get(key) or {}
