@@ -15,6 +15,7 @@ from agents.roles_sod import run_roles_sod, evaluate_roles_controls
 from agents.approval_chain import run_approval_chain, evaluate_approval_controls
 from agents.control_checklists import run_control_checklists, evaluate_control_checklists
 from agents.exceptions_tracker import run_exceptions_tracker, evaluate_exceptions_controls
+from agents.disclosure_checklist import run_disclosure_checklist
 
 
 import jsonpatch
@@ -133,6 +134,8 @@ def detect_intent(prompt: str) -> str:
         return "controls"
     if "exception" in q or "waiver" in q or "sole source" in q or "emergency" in q or "deviation" in q:
         return "exceptions"
+    if "disclosure" in q or "checklist" in q:
+        return "disclosure"
     return "unknown"
 
 
@@ -956,6 +959,8 @@ async def chat_ask(request: Request):
             result = run_control_checklists(doc_id, index, prompt)
         elif intent == "exceptions":
             result = run_exceptions_tracker(doc_id, index, prompt)
+        elif intent == "disclosure":
+            result = run_disclosure_checklist(doc_id, index, prompt)
         else:
             result = {
                 "patches": [],
@@ -965,9 +970,9 @@ async def chat_ask(request: Request):
                     "• Roles & SoD\n"
                     "• Approval Chain\n"
                     "• Control Calendar & Checklists\n"
-                    "• Exceptions & Waiver Tracker\n\n"
-                    "Try: “Spending checker”, “Roles & SoD”, “Approval chain”, "
-                    "“Control calendar”, or “Exceptions tracker”."
+                    "• Exceptions & Waiver Tracker\n"
+                    "• Disclosure Checklist\n\n"
+                    "Try: “Spending checker”, “Roles & SoD”, “Approval chain”, “Control calendar”, “Exceptions tracker”, or “Disclosure checklist”."
                 ),
             }
     except Exception as e:

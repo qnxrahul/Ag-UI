@@ -8,6 +8,7 @@ import ApprovalChain from "./ApprovalChain";
 import ControlChecklists from "./ControlChecklists";
 import { Accordion } from "react-bootstrap";
 import { ContextAPI } from "../agui/bridge";
+import DisclosureChecklist from "./DisclosureChecklist";
 
 export default function PanelHost(props: {
   state: AppState;
@@ -41,6 +42,8 @@ export default function PanelHost(props: {
         return wrap(<ApprovalChain state={state} panelId={id} cfg={cfg} sendPatch={sendPatch} />);
       case "control_checklists":
         return wrap(<ControlChecklists state={state} panelId={id} cfg={cfg} sendPatch={sendPatch} />);
+      case "disclosure_checklist":
+        return wrap(<DisclosureChecklist panelId={id} cfg={cfg} sendPatch={sendPatch} />);
       case "context_merge":
         return wrap(<ContextMergePanel />);
       default:
