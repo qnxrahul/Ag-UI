@@ -185,6 +185,7 @@ import { Container, Navbar, Button, Form, Row, Col } from "react-bootstrap";
 export default function App() {
   const [state, setState] = useState<AppState | null>(null);
   const [docName, setDocName] = useState<string>("");
+  const [namespace, setNamespace] = useState<string>("enterprise");
   const clientRef = useRef<AguiClient | null>(null);
 
   useEffect(() => {
@@ -236,6 +237,10 @@ export default function App() {
         <Container fluid>
           <Navbar.Brand style={{ fontWeight: 800, letterSpacing: 0.2 }}>AG-UI PoC Dashboard</Navbar.Brand>
           <Form className="d-flex align-items-center gap-2">
+            <Form.Select size="sm" value={namespace} onChange={(e) => setNamespace(e.target.value)} style={{ maxWidth: 160 }}>
+              <option value="enterprise">Enterprise</option>
+              <option value="customer">Customer</option>
+            </Form.Select>
             <Form.Control
               type="file"
               size="sm"
@@ -246,6 +251,7 @@ export default function App() {
                   const form = new FormData();
                   form.append("file", f);
                   form.append("kind", "auto");
+                  form.append("namespace", namespace);
                   const res = await fetch(`${BASE_URL}/ingest/upload`, { method: "POST", body: form });
                   const data = await res.json();
                   if (!res.ok) throw new Error(data?.error || "Upload failed");
@@ -258,6 +264,28 @@ export default function App() {
             />
             <Button className="btn-glow" size="sm" onClick={softInit}>Initialize</Button>
             <Button className="btn-glow" size="sm" onClick={exportCsv}>Export CSV</Button>
+            <Button
+              className="btn-glow"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${BASE_URL}/context/add_merge_panel`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Context Merge" }) });
+                  if (!res.ok) throw new Error(await res.text());
+                } catch (e) { alert((e as Error).message); }
+              }}
+            >Add Merge Panel</Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${BASE_URL}/compare/metrics`);
+                  const data = await res.json();
+                  if (!res.ok) throw new Error("compare failed");
+                  alert(`AG-UI tokens: ${data.ag_ui.token_estimate}\nTraditional tokens: ${data.traditional.token_estimate}`);
+                } catch (e) { alert((e as Error).message); }
+              }}
+            >Compare</Button>
             {lastExportUrl && (
               <Button as="a" href={lastExportUrl} target="_blank" rel="noreferrer" variant="light" size="sm" style={{ opacity:.9 }}>
                 Download last export

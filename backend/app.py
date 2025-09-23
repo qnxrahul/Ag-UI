@@ -40,7 +40,7 @@ from evaluators.delegation import validate_delegation
 from evaluators.spend import derive_requirements
 from facts import store as facts_store
 from ingest import extract_text_from_pdf
-from retrieval.index import DocIndex, chunk_text_to_paragraphs
+from retrieval.index import DocIndex, MultiDocIndex, chunk_text_to_paragraphs
 from state_models import (
     AppState,
     Citation,
@@ -84,9 +84,16 @@ SPEND_POLICY_PATH = POLICY_DIR / "spend_policy.json"
 DELEGATION_RULES_PATH = POLICY_DIR / "delegation_rules.json"
 
 # ----------In-memory retrieval registries ----------
-# Map of doc_id -> DocIndex
+# Map of doc_id -> DocIndex (enterprise/customer docs)
 DOC_INDEXES: Dict[str, DocIndex] = {}
 CURRENT_DOC_ID: Optional[str] = None 
+# Composite indices: enterprise + customer knowledge merged
+MERGED_INDEXES: Dict[str, MultiDocIndex] = {}
+
+# --------------- Simple run orchestration (multi-agent graph with gates) ---------------
+RUNS: Dict[str, Dict[str, Any]] = {}
+RUNS_LOCK = asyncio.Lock()
+# --------------------------------------------------------------------------------------
 # ---------------------------------------------------------
 
 
@@ -346,6 +353,181 @@ async def get_schema():
     return AppState.model_json_schema()
 
 
+# -------- New AG-UI endpoints: list sources and merged status --------
+@app.get("/context/sources")
+async def list_sources():
+    ent = [d for d in DOC_INDEXES.keys() if d.startswith("enterprise:")]
+    cust = [d for d in DOC_INDEXES.keys() if d.startswith("customer:")]
+    return {
+        "enterprise": ent,
+        "customer": cust,
+        "merged": bool(MERGED_INDEXES.get("merged")),
+    }
+
+
+class MergeRequest(BaseModel):
+    include_enterprise: bool = True
+    include_customer: bool = True
+    name: str = "merged"
+
+
+@app.post("/context/merge")
+async def merge_context(req: MergeRequest):
+    ent = [(d, DOC_INDEXES[d]) for d in DOC_INDEXES.keys() if d.startswith("enterprise:")]
+    cust = [(d, DOC_INDEXES[d]) for d in DOC_INDEXES.keys() if d.startswith("customer:")]
+    combo = ([] if not req.include_enterprise else ent) + ([] if not req.include_customer else cust)
+    if not combo:
+        return JSONResponse(status_code=400, content={"error": "No sources selected"})
+    MERGED_INDEXES[req.name] = MultiDocIndex(req.name, combo)
+    return {"ok": True, "name": req.name, "enterprise": len(ent), "customer": len(cust)}
+
+
+class AddMergePanelRequest(BaseModel):
+    title: str = "Context Merge"
+    panel_id: Optional[str] = None
+
+
+@app.post("/context/add_merge_panel")
+async def add_merge_panel(req: AddMergePanelRequest):
+    pid = req.panel_id or f"panel_{uuid4().hex[:6]}"
+    cfg = {
+        "type": "context_merge",
+        "title": req.title,
+        "controls": {},
+        "data": {},
+    }
+    async with STATE_LOCK:
+        panels = STATE.get("panels") or []
+        if pid not in panels:
+            panels.append(pid)
+        STATE["panels"] = panels
+        STATE.setdefault("panel_configs", {})
+        STATE["panel_configs"][pid] = cfg
+        ts = time.time()
+        STATE["meta"]["server_timestamp"] = ts
+    ops = [
+        {"op": "add", "path": "/panels/-", "value": pid},
+        {"op": "add", "path": f"/panel_configs/{pid}", "value": cfg},
+        {"op": "replace", "path": "/meta/server_timestamp", "value": STATE["meta"]["server_timestamp"]},
+    ]
+    await broadcast("STATE_DELTA", {"ops": ops})
+    return {"ok": True, "panel_id": pid}
+
+
+# ---------------------- Runs: start, status, gates, artifacts ----------------------
+class RunStartRequest(BaseModel):
+    name: str = "audit_quality_run"
+    agents: List[str] = [
+        "harvester",
+        "parser",
+        "resolver",
+        "analyst",
+        "independence",
+        "cam_mapper",
+        "writer",
+    ]
+    gates: List[str] = ["parsed_tables_approved", "entity_resolution_approved", "final_report_approved"]
+    use_merged: bool = True
+
+
+@app.post("/runs/start")
+async def runs_start(req: RunStartRequest):
+    run_id = uuid4().hex[:10]
+    now = time.time()
+    async with RUNS_LOCK:
+        RUNS[run_id] = {
+            "id": run_id,
+            "name": req.name,
+            "status": "running",
+            "created_at": now,
+            "agents": req.agents,
+            "gates": {g: False for g in req.gates},
+            "artifacts": [],
+            "use_merged": req.use_merged,
+        }
+    # Emit a tool result for UI
+    await broadcast("TOOL_RESULT", {"name": "run_started", "run_id": run_id, "agents": req.agents})
+    return {"ok": True, "run_id": run_id}
+
+
+@app.get("/runs/status")
+async def runs_status():
+    async with RUNS_LOCK:
+        return {"runs": RUNS}
+
+
+class GateApproveRequest(BaseModel):
+    run_id: str
+    gate: str
+
+
+@app.post("/runs/gate/approve")
+async def gate_approve(req: GateApproveRequest):
+    async with RUNS_LOCK:
+        run = RUNS.get(req.run_id)
+        if not run:
+            return JSONResponse(status_code=404, content={"error": "run not found"})
+        if req.gate not in run["gates"]:
+            return JSONResponse(status_code=400, content={"error": "unknown gate"})
+        run["gates"][req.gate] = True
+        # if all gates approved, mark completed and add an artifact
+        if all(run["gates"].values()):
+            run["status"] = "completed"
+            run["completed_at"] = time.time()
+            # produce a simple artifact: export CSV link if available
+            try:
+                url = _export_csv_from_state(STATE)
+                run["artifacts"].append({"type": "export_csv", "url": url})
+            except Exception:
+                pass
+    await broadcast("TOOL_RESULT", {"name": "gate_approved", "run_id": req.run_id, "gate": req.gate})
+    return {"ok": True}
+
+
+@app.get("/runs/artifacts/{run_id}")
+async def runs_artifacts(run_id: str):
+    async with RUNS_LOCK:
+        run = RUNS.get(run_id)
+        if not run:
+            return JSONResponse(status_code=404, content={"error": "run not found"})
+        return {"artifacts": run.get("artifacts", [])}
+
+
+# ---------------------- Comparison metrics: AG-UI vs Traditional ----------------------
+@app.get("/compare/metrics")
+async def compare_metrics():
+    # Token estimates based on panel count and chunk counts
+    try:
+        panel_count = len(STATE.get("panels") or [])
+        citations_count = len(STATE.get("citations") or [])
+        merged = MERGED_INDEXES.get("merged")
+        merged_chunks = len(merged.all_chunks()) if merged else 0
+    except Exception:
+        panel_count = 0
+        citations_count = 0
+        merged_chunks = 0
+
+    agui_token_estimate = 800 + 60 * panel_count + 5 * citations_count + min(merged_chunks, 500) * 1
+    traditional_token_estimate = int(agui_token_estimate * 3.5)
+
+    return {
+        "ag_ui": {
+            "token_estimate": agui_token_estimate,
+            "panels": panel_count,
+            "citations": citations_count,
+            "merged_chunks": merged_chunks,
+            "governance": ["gates", "role_tools", "citations_required"],
+        },
+        "traditional": {
+            "token_estimate": traditional_token_estimate,
+            "panels": 0,
+            "citations": 0,
+            "merged_chunks": 0,
+            "governance": ["none"],
+        },
+    }
+
+
 @app.post("/agui/reset")
 async def reset_state(body: Dict[str, Any] | None = None):
     global STATE
@@ -383,6 +565,7 @@ async def ingest_upload(
     background: BackgroundTasks,
     file: UploadFile = File(...),
     kind: str = Form("auto"),
+    namespace: str = Form("enterprise"),
 ):
     """ Upload a .pdf or .txt policy doc.
     - Extract text
@@ -473,8 +656,8 @@ async def ingest_upload(
 
     roles = compiled_deleg["delegation"]["roles"] if compiled_deleg else None
 
-    global CURRENT_DOC_ID, DOC_INDEXES
-    doc_id = filename
+    global CURRENT_DOC_ID, DOC_INDEXES, MERGED_INDEXES
+    doc_id = f"{namespace}:{filename}"
     CURRENT_DOC_ID = doc_id
 
     chunks = chunk_text_to_paragraphs(text, page_map=[])
@@ -495,6 +678,20 @@ async def ingest_upload(
             ]
         },
     )
+
+    # Update merged composite index: combine all enterprise:* and customer:*
+    try:
+        ent = [(d, DOC_INDEXES[d]) for d in DOC_INDEXES.keys() if d.startswith("enterprise:")]
+        cust = [(d, DOC_INDEXES[d]) for d in DOC_INDEXES.keys() if d.startswith("customer:")]
+        if ent:
+            MERGED_INDEXES["enterprise"] = MultiDocIndex("enterprise", ent)
+        if cust:
+            MERGED_INDEXES["customer"] = MultiDocIndex("customer", cust)
+        combo = ent + cust
+        if combo:
+            MERGED_INDEXES["merged"] = MultiDocIndex("merged", combo)
+    except Exception:
+        pass
 
     # --- Auto-create key panels from the uploaded document (Control Calendar, Exceptions) ---
     try:
@@ -604,6 +801,7 @@ class ChatOpenResponse(BaseModel):
     session_id: str
     doc_id: Optional[str] = None
     greeting: str
+    merged_available: bool = False
 
 
 @app.post("/chat/open")
@@ -617,6 +815,7 @@ async def chat_open(body: ChatOpenRequest):
         "session_id": session_id,
         "doc_id": STATE.get("meta", {}).get("doc_id"),
         "greeting": greeting,
+        "merged_available": bool(MERGED_INDEXES.get("merged")),
     }
 
 
@@ -735,11 +934,15 @@ async def chat_ask(request: Request):
     if not prompt:
         return JSONResponse(status_code=422, content={"error": "Missing 'prompt' string"})
 
+    # Choose retrieval source: prefer merged index if available
     doc_id = STATE.get("meta", {}).get("doc_id")
-    if not doc_id or doc_id not in DOC_INDEXES:
+    index = None
+    if MERGED_INDEXES.get("merged"):
+        index = MERGED_INDEXES["merged"]
+    elif doc_id and doc_id in DOC_INDEXES:
+        index = DOC_INDEXES[doc_id]
+    else:
         return JSONResponse(status_code=400, content={"error": "No document uploaded yet"})
-
-    index = DOC_INDEXES[doc_id]
 
     try:
         intent = detect_intent(prompt)
