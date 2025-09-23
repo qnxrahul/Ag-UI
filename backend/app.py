@@ -24,6 +24,7 @@ from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 
@@ -695,6 +696,66 @@ async def ingest_upload(
             MERGED_INDEXES["merged"] = MultiDocIndex("merged", combo)
     except Exception:
         pass
+
+@app.post("/ingest/url")
+async def ingest_url(body: Dict[str, Any]):
+    url = (body or {}).get("url", "").strip()
+    namespace = (body or {}).get("namespace", "enterprise").strip() or "enterprise"
+    kind = (body or {}).get("kind", "auto")
+    if not url:
+        return JSONResponse(status_code=400, content={"error": "Missing url"})
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return JSONResponse(status_code=400, content={"error": f"Fetch failed: {r.status_code}"})
+            content = r.content
+            ct = r.headers.get("content-type", "")
+    except Exception as e:
+        return JSONResponse(status_code=400, content={"error": f"Fetch error: {e}"})
+
+    # Save to docs
+    name = url.split("/")[-1] or (uuid4().hex[:8] + ".html")
+    save_path = DOCS_DIR / name
+    save_path.write_bytes(content)
+
+    # Convert to text for indexing (simple fallback)
+    text = ""
+    try:
+        if name.lower().endswith(".pdf"):
+            text = extract_text_from_pdf(str(save_path))
+        else:
+            raw = content.decode("utf-8", errors="ignore")
+            # naive HTML strip
+            import re
+            text = re.sub(r"<[^>]+>", " ", raw)
+    except Exception:
+        text = ""
+
+    if not text.strip():
+        return {"ok": True, "saved": str(save_path), "indexed": False}
+
+    # index under namespace
+    doc_id = f"{namespace}:{name}"
+    chunks = chunk_text_to_paragraphs(text, page_map=[])
+    DOC_INDEXES[doc_id] = DocIndex(doc_id=doc_id, chunks=chunks)
+
+    # refresh merged
+    try:
+        ent = [(d, DOC_INDEXES[d]) for d in DOC_INDEXES.keys() if d.startswith("enterprise:")]
+        cust = [(d, DOC_INDEXES[d]) for d in DOC_INDEXES.keys() if d.startswith("customer:")]
+        if ent:
+            MERGED_INDEXES["enterprise"] = MultiDocIndex("enterprise", ent)
+        if cust:
+            MERGED_INDEXES["customer"] = MultiDocIndex("customer", cust)
+        combo = ent + cust
+        if combo:
+            MERGED_INDEXES["merged"] = MultiDocIndex("merged", combo)
+    except Exception:
+        pass
+
+    return {"ok": True, "saved": str(save_path), "indexed": True, "doc_id": doc_id}
+
 
     # --- Auto-create key panels from the uploaded document (Control Calendar, Exceptions) ---
     try:
