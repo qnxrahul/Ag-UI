@@ -8,3 +8,4 @@
 /.vs/Ag-UI/v17/DocumentLayout.json
 /.vs/slnx.sqlite
 /.vs/VSWorkspaceState.json
+*.pyc
