@@ -118,3 +118,25 @@ export class AguiClient {
 }
 
 export { BASE_URL };
+
+// Lightweight REST helpers for context management
+export const ContextAPI = {
+  listSources: async (): Promise<{ enterprise: string[]; customer: string[]; merged: boolean }> => {
+    const res = await fetch(`${BASE_URL}/context/sources`);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+  merge: async (payload: { include_enterprise: boolean; include_customer: boolean; name?: string }) => {
+    const res = await fetch(`${BASE_URL}/context/merge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        include_enterprise: payload.include_enterprise,
+        include_customer: payload.include_customer,
+        name: payload.name || "merged",
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  },
+};
