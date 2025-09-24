@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as AdaptiveCards from "adaptivecards";
-import { BASE_URL } from "../agui/bridge";
+import { BASE_URL, runViaBackend, getTokenMetrics } from "../agui/bridge";
+import { runWithHttpAgent } from "../agui/httpAgent";
+import type { ToolDef } from "../agui/httpAgent";
 import { Card, Form, InputGroup, Button, Badge } from "react-bootstrap";
 
 type ChatMsg = { role: "assistant" | "user"; text: string };
@@ -15,6 +17,9 @@ export default function ChatWindow() {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const initialActionsRef = useRef<ActionItem[] | null>(null);
   const [flow, setFlow] = useState<{ name: null | "spending"; step?: string; data?: any }>({ name: null });
+  const [loading, setLoading] = useState(false);
+  const [lastTokenInfo, setLastTokenInfo] = useState<{ cache: string; savedEst?: number } | null>(null);
+  const [totals, setTotals] = useState<{ saved?: number; used?: number } | null>(null);
 
   async function fetchState() {
     try {
@@ -38,11 +43,7 @@ export default function ChatWindow() {
     let pid = findPanelId(st);
     if (pid) return pid;
     try {
-      await fetch(`${BASE_URL}/chat/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: "spending checker" })
-      });
+      await runViaBackend({ messages: [{ role: "user", content: "spending checker" }] });
     } catch {}
     // poll up to ~2s
     for (let i = 0; i < 8; i++) {
@@ -78,7 +79,18 @@ export default function ChatWindow() {
   }
 
   useEffect(() => {
-    fetch(`${BASE_URL}/chat/open`, { method: "POST" }).catch(() => {});
+    fetch(`${BASE_URL}/chat/open`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) }).catch(() => {});
+    // Fetch token totals on mount and every 10s
+    let alive = true;
+    const tick = async () => {
+      const metrics = await getTokenMetrics();
+      if (metrics && alive) {
+        setTotals({ saved: metrics.saved_tokens_est, used: metrics.used_tokens_reported });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 10000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
 
   useEffect(() => {
@@ -117,11 +129,7 @@ export default function ChatWindow() {
           if (kind === "chat" && prompt) {
             (window as any).__onUserPrompt?.(data.label || prompt);
             try {
-              await fetch(`${BASE_URL}/chat/ask`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt })
-              });
+              await runViaBackend({ messages: [{ role: "user", content: prompt }] });
             } catch {}
           } else if (kind === "export") {
             try {
@@ -162,6 +170,40 @@ export default function ChatWindow() {
         }
       } catch {}
     };
+
+    // Optional: handle AG-UI structured cards (ui_card)
+    w.__onUiCard = (cardJson: any) => {
+      try {
+        const card = new AdaptiveCards.AdaptiveCard();
+        card.version = new AdaptiveCards.Version(1, 5);
+        card.onExecuteAction = async (action: any) => {
+          const data = (action as any).data || {};
+          if (data?.patch && Array.isArray(data.patch)) {
+            try {
+              await fetch(`${BASE_URL}/agui/patch`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ops: data.patch })
+              });
+            } catch {}
+          } else if (typeof data?.prompt === "string") {
+            try {
+              await runViaBackend({ messages: [{ role: "user", content: data.prompt }] });
+            } catch {}
+          }
+        };
+        card.parse(cardJson);
+        const rendered = card.render();
+        const host = listRef.current;
+        if (host && rendered) {
+          const wrap = document.createElement("div");
+          wrap.style.marginTop = "6px";
+          host.appendChild(wrap);
+          wrap.appendChild(rendered);
+          host.scrollTo({ top: host.scrollHeight, behavior: "smooth" });
+        }
+      } catch {}
+    };
     return () => {
       try { if (w.__onChatMessage) delete w.__onChatMessage; } catch {}
       try { if (w.__onUserPrompt) delete w.__onUserPrompt; } catch {}
@@ -174,16 +216,85 @@ export default function ChatWindow() {
     setMsgs((m) => [...m, { role: "user", text: q }]);
 
     try {
-      const res = await fetch(`${BASE_URL}/chat/ask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: q })
-      });
-      const data = await res.json();
-      const reply = data?.message || "Okay — I’ve updated the panels.";
-      setMsgs((m) => [...m, { role: "assistant", text: reply }]);
+      setLoading(true);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      let sawAssistant = false;
+      let usedHttpAgent = false;
+      try {
+        // Prefer AG-UI HttpAgent when available
+        const tools: ToolDef[] = [
+          { name: "panel.patch", description: "Apply JSON Patch", parameters: { type: "object", properties: { ops: { type: "array" } }, required: ["ops"] } },
+          { name: "export.csv", description: "Export CSV", parameters: { type: "object", properties: {} } },
+          { name: "open.panel", description: "Open panel", parameters: { type: "object", properties: { type: { type: "string" } }, required: ["type"] } },
+        ];
+        await runWithHttpAgent(
+          { runId: crypto.randomUUID(), messages: [{ role: "user", content: q }], tools, context: [], forwardedProps: {} },
+          (ev) => {
+            try {
+              if ((ev as any)?.name === "chat_message" && (ev as any)?.message) {
+                setMsgs((m) => [...m, { role: "assistant", text: (ev as any).message }]);
+                sawAssistant = true;
+              }
+            } catch {}
+          },
+          controller.signal
+        );
+        usedHttpAgent = true;
+      } catch {
+        // Fallback to plain fetch proxy
+        const res = await runViaBackend({ messages: [{ role: "user", content: q }], context: [], forwardedProps: {}, tools: [] }, controller.signal);
+        const cacheHdr = res.headers.get("X-AGUI-Cache") || "";
+        const savedHdr = res.headers.get("X-AGUI-Saved-Est") || undefined;
+        if (cacheHdr) setLastTokenInfo({ cache: cacheHdr, savedEst: savedHdr ? Number(savedHdr) : undefined });
+        if (!res.ok) throw new Error(await res.text());
+        const reader = res.body?.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (reader) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() || "";
+          for (const evt of parts) {
+            const lines = evt.split("\n");
+            let eventName = "message";
+            let dataLine = "";
+            for (const line of lines) {
+              if (line.startsWith("event:")) eventName = line.slice(6).trim();
+              if (line.startsWith("data:")) dataLine += line.slice(5).trim();
+            }
+            if (eventName && dataLine) {
+              try {
+                const payload = JSON.parse(dataLine);
+                if (payload?.name === "chat_message" && payload?.message) {
+                  setMsgs((m) => [...m, { role: "assistant", text: payload.message }]);
+                  sawAssistant = true;
+                }
+              } catch {}
+            }
+          }
+        }
+      }
+      clearTimeout(timeout);
+      // Fallback message if nothing streamed
+      setMsgs((m) => (sawAssistant || m[m.length - 1]?.role === "assistant" ? m : [...m, { role: "assistant", text: "Okay — processed via LangGraph." }]));
+
+      // If no state change for spending prompt, fallback to local agent endpoint to create panels
+      if (/spend/i.test(q)) {
+        try {
+          const st = await fetchState();
+          const hasSpending = !!Object.values(st?.panel_configs || {}).find((cfg: any) => cfg?.type === "form_spending");
+          if (!hasSpending) {
+            await fetch(`${BASE_URL}/chat/ask`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt: q }) });
+          }
+        } catch {}
+      }
     } catch {
       setMsgs((m) => [...m, { role: "assistant", text: "Sorry — I couldn’t reach the server." }]);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -192,9 +303,25 @@ export default function ChatWindow() {
       <Card.Header className="d-flex align-items-center gap-2" style={{ background: "#ffffff" }}>
         <span>Conversational Assistant</span>
         <Badge bg="secondary">Beta</Badge>
+        {lastTokenInfo && (
+          <span style={{ marginLeft: "auto", fontSize: 12, color: "#555" }}>
+            Cache: {lastTokenInfo.cache}
+            {typeof lastTokenInfo.savedEst === "number" && ` · Saved est: ${Math.max(0, Math.floor(lastTokenInfo.savedEst || 0)).toLocaleString()} tok`}
+          </span>
+        )}
+        {totals && (
+          <span style={{ marginLeft: 12, fontSize: 12, color: "#555" }}>
+            Total saved est: {(Math.floor(totals.saved || 0)).toLocaleString()} · Total used reported: {(Math.floor(totals.used || 0)).toLocaleString()}
+          </span>
+        )}
       </Card.Header>
       <Card.Body ref={listRef as any} className="chat-panel">
         <div className="chat-bubbles">
+          {loading && (
+            <div className="bubble bubble-assistant" style={{ opacity: 0.8 }}>
+              <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" /> Processing…
+            </div>
+          )}
           {msgs.map((m: ChatMsg, i: number) => (
             <div key={i} className={`bubble ${m.role === "user" ? "bubble-user" : "bubble-assistant"}`}>
               {m.text}
@@ -210,11 +337,7 @@ export default function ChatWindow() {
                     if (it.kind === "chat" && it.prompt) {
                       (window as any).__onUserPrompt?.(it.label);
                       try {
-                        await fetch(`${BASE_URL}/chat/ask`, {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ prompt: it.prompt })
-                        });
+                        await runViaBackend({ messages: [{ role: "user", content: it.prompt }] });
                       } catch {}
                       // simple workflow branching
                       if (/spending checker/i.test(it.label)) {

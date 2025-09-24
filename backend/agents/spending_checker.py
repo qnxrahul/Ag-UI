@@ -327,13 +327,22 @@ def run_spending_checker(doc_id: str, index: DocIndex, user_query: str) -> Dict[
         snippet = next((c.text for c in chunks if c.id == cid), "")
         citations.append({"key": "spend.rule", "snippet": snippet, "page": id_to_page.get(cid), "chunk_id": cid})
 
+    suggestions_ui = [
+        {
+            "type": "Action.Submit",
+            "title": f"Set amount to {int(v)}",
+            "data": {"patch": [{"op":"add","path": f"/panel_configs/Panel:spending:{doc_id}/controls/amount", "value": int(v)}]}
+        }
+        for v in sorted({float(v) for v in _used_numbers_in_rules(result)})
+    ]
+
     patches = [
         {"op":"add","path":"/panels/-","value": panel_id},
         {"op":"add","path":f"/panel_configs/{panel_id}","value":{
             "type":"form_spending",
             "title":"Spending Checker",
             "controls": { "amount": None, "category": None },
-            "data": { "rules": result, "required_steps": [], "citations": citations }
+            "data": { "rules": result, "required_steps": [], "citations": citations, "suggestions_ui": suggestions_ui }
         }}
     ]
     message = "I’ve created the **Spending Checker** panel. Amount rules and citations are derived only from money-like values in threshold sentences from your document."

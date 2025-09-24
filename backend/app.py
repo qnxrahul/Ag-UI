@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import csv
 import json
 import os
@@ -21,12 +22,17 @@ import jsonpatch
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi import BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 from sse_starlette.sse import EventSourceResponse
 
 from dotenv import load_dotenv
+try:
+    from ag_ui_langgraph import add_langgraph_fastapi_endpoint
+except Exception:
+    add_langgraph_fastapi_endpoint = None  # type: ignore
+import httpx
 load_dotenv() 
 
 
@@ -51,6 +57,47 @@ from state_models import (
 )
 
 app = FastAPI(title="AG-UI PoC Backend", version="0.2.0")
+# Prefer Proactor loop on Windows to avoid select() fd limits
+try:
+    if sys.platform.startswith("win"):
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+except Exception:
+    pass
+
+# Attach AG-UI LangGraph endpoint if available
+try:
+    if add_langgraph_fastapi_endpoint is not None:
+        from graph.agent import build_graph
+        graph_obj = build_graph()
+        if graph_obj is not None:
+            add_langgraph_fastapi_endpoint(app, graph_obj, "/agent")
+except Exception:
+    pass
+
+# Always provide a fallback /agent endpoint that proxies to /agui/run
+@app.post("/agent")
+async def agent_fallback(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    port = os.getenv("PORT", "8000")
+    run_url = f"http://127.0.0.1:{port}/agui/run"
+    async def forward():
+        async with httpx.AsyncClient(timeout=None) as client:
+            try:
+                async with client.stream("POST", run_url, json=body) as resp:
+                    if resp.status_code != 200:
+                        err = await resp.aread()
+                        yield b"event: ERROR\n" + b"data: " + err + b"\n\n"
+                        return
+                    async for chunk in resp.aiter_bytes():
+                        if chunk:
+                            yield chunk
+            except Exception as e:
+                payload = {"status": 502, "body": f"proxy_failure: {type(e).__name__}: {e}"}
+                yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+    return StreamingResponse(forward(), media_type="text/event-stream")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -88,6 +135,25 @@ DELEGATION_RULES_PATH = POLICY_DIR / "delegation_rules.json"
 DOC_INDEXES: Dict[str, DocIndex] = {}
 CURRENT_DOC_ID: Optional[str] = None 
 # ---------------------------------------------------------
+
+# ---- LangGraph configuration (AG-UI) ----
+LANGGRAPH_RUN_URL = os.getenv("LANGGRAPH_RUN_URL")
+MAX_RUN_SECONDS = float(os.getenv("AGUI_MAX_RUN_SECONDS", "20"))
+EARLY_STOP_ON_TOOL = (os.getenv("AGUI_EARLY_STOP_ON_TOOL", "1") != "0")
+
+# ---- Token-aware run cache & metrics ----
+RUN_CACHE: Dict[str, Dict[str, Any]] = {}
+CACHE_TTL_SECS = 300
+TOKENS_SAVED_EST: float = 0.0
+TOKENS_USED_REPORTED: float = 0.0
+THREAD_MEMORY: Dict[str, Dict[str, Any]] = {}
+
+def _estimate_input_tokens(payload: Any) -> int:
+    try:
+        s = json.dumps(payload, ensure_ascii=False)
+        return int(max(1, len(s) / 4))
+    except Exception:
+        return 0
 
 
 def _load_spend_policy() -> Dict[str, Any]:
@@ -129,6 +195,53 @@ def detect_intent(prompt: str) -> str:
     return "unknown"
 
 
+def _thread_context_summary() -> str:
+    try:
+        meta = STATE.get("meta", {}) or {}
+        doc = meta.get("doc_id") or meta.get("docName") or "(none)"
+        cfgs = (STATE.get("panel_configs") or {})
+        ptypes = sorted({(cfg or {}).get("type") for cfg in cfgs.values() if isinstance(cfg, dict)})
+        return (
+            f"doc_id={doc} panels={len(cfgs)} types={','.join([t for t in ptypes if t])}"
+        )
+    except Exception:
+        return ""
+
+
+def _controls_bucket_snapshot(state: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        panel_cfgs = (state or {}).get("panel_configs") or {}
+        out: Dict[str, Any] = {}
+        for pid, cfg in panel_cfgs.items():
+            ptype = (cfg or {}).get("type")
+            ctrls = (cfg or {}).get("controls") or {}
+            if ptype == "form_spending":
+                amt = ctrls.get("amount")
+                cat = (ctrls.get("category") or "").strip().lower() or None
+                if isinstance(amt, (int, float)):
+                    try:
+                        amt = int(max(0, round(float(amt) / 1000.0)) * 1000)
+                    except Exception:
+                        amt = None
+                out[pid] = {"type": ptype, "amount_bucket": amt, "category": cat}
+            elif ptype == "approval_chain":
+                amt = ctrls.get("amount")
+                inst = (ctrls.get("instrument") or "").strip().lower() or None
+                if isinstance(amt, (int, float)):
+                    try:
+                        amt = int(max(0, round(float(amt) / 1000.0)) * 1000)
+                    except Exception:
+                        amt = None
+                out[pid] = {"type": ptype, "amount_bucket": amt, "instrument": inst}
+            elif ptype == "exceptions_tracker":
+                entry = ctrls.get("entry") or {}
+                kw = (entry.get("keywords") or "").strip().lower() or None
+                out[pid] = {"type": ptype, "kw": kw}
+        return out
+    except Exception:
+        return {}
+
+
 
 class Client:
     def __init__(self) -> None:
@@ -137,16 +250,28 @@ class Client:
 
 clients: Set[Client] = set()
 clients_lock = asyncio.Lock()
+MAX_SSE_CLIENTS = int(os.getenv("AGUI_MAX_CLIENTS", "100"))
 
 
 async def broadcast(event: str, payload: Any) -> None:
-    message = {"event": event, "data": json.dumps(payload)}
+    # Map to AG-UI standard aliases as well
+    events: List[str] = [event]
+    if event == "STATE_SNAPSHOT":
+        events.append("state.snapshot")
+    elif event == "STATE_DELTA":
+        events.append("state.delta")
+    elif event == "TOOL_RESULT":
+        name = (payload or {}).get("name") if isinstance(payload, dict) else None
+        events.append("tool.result")
+        if name == "ui_card":
+            events.append("ui.card")
     async with clients_lock:
         for c in list(clients):
-            try:
-                await c.queue.put(message)
-            except Exception:
-                clients.discard(c)
+            for ev in events:
+                try:
+                    await c.queue.put({"event": ev, "data": json.dumps(payload)})
+                except Exception:
+                    clients.discard(c)
 
 
 async def sse_generator(client: Client):
@@ -154,6 +279,7 @@ async def sse_generator(client: Client):
     async with STATE_LOCK:
         snapshot = {"state": STATE, "ts": time.time()}
     yield {"event": "STATE_SNAPSHOT", "data": json.dumps(snapshot)}
+    yield {"event": "state.snapshot", "data": json.dumps(snapshot)}
     try:
         while True:
             try:
@@ -194,6 +320,115 @@ def _normalize_ops(ops_raw: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 def _validate_state(candidate: Dict[str, Any]) -> AppState:
     """Validate dict against AppState; raise ValidationError if invalid."""
     return AppState.model_validate(candidate)
+
+
+class RunAgentTool(BaseModel):
+    name: str
+    description: Optional[str] = None
+    parameters: Dict[str, Any] = {}
+
+
+class RunAgentContext(BaseModel):
+    role: str
+    content: str
+
+
+class RunAgentMessage(BaseModel):
+    role: str
+    content: str
+
+
+class RunAgentInputModel(BaseModel):
+    threadId: Optional[str] = None
+    runId: Optional[str] = None
+    messages: List[RunAgentMessage]
+    tools: Optional[List[RunAgentTool]] = None
+    context: Optional[List[RunAgentContext]] = None
+    forwardedProps: Optional[Dict[str, Any]] = None
+
+
+# ----------------- AG-UI Tools -----------------
+class Tool(BaseModel):
+    name: str
+    title: str
+    description: str | None = None
+    schema: Dict[str, Any] = {}
+
+
+TOOLS: Dict[str, Tool] = {
+    "panel.patch": Tool(
+        name="panel.patch",
+        title="Apply JSON Patch",
+        description="Apply JSON Patch ops to app state",
+        schema={"type":"object","properties":{"ops":{"type":"array"}},"required":["ops"]},
+    ),
+    "export.csv": Tool(
+        name="export.csv",
+        title="Export CSV",
+        description="Export a CSV summary and return URL",
+        schema={"type":"object","properties":{}},
+    ),
+    "open.panel": Tool(
+        name="open.panel",
+        title="Open Panel",
+        description="Ensure a panel exists (by type)",
+        schema={"type":"object","properties":{"type":{"type":"string"}},"required":["type"]},
+    ),
+}
+
+
+@app.get("/agui/tools")
+async def list_tools():
+    return {"tools": [t.model_dump() for t in TOOLS.values()]}
+
+
+@app.post("/agui/tools/run")
+async def run_tool(body: Dict[str, Any]):
+    name = (body or {}).get("name")
+    args = (body or {}).get("args") or {}
+    if name not in TOOLS:
+        return JSONResponse(status_code=404, content={"error": "unknown tool"})
+
+    if name == "panel.patch":
+        try:
+            patch_req = PatchRequest(ops=[PatchOp(**op) for op in (args.get("ops") or [])])
+        except Exception as e:
+            return JSONResponse(status_code=400, content={"error": f"invalid ops: {e}"})
+        res = await apply_patch(patch_req)
+        await broadcast("TOOL_RESULT", {"name":"tool.result","tool":"panel.patch","ok":True})
+        return res
+
+    if name == "export.csv":
+        async with STATE_LOCK:
+            base = json.loads(json.dumps(STATE))
+        url = _export_csv_from_state(base)
+        await broadcast("TOOL_RESULT", {"name":"tool.result","tool":"export.csv","url":url})
+        return {"ok": True, "url": url}
+
+    if name == "open.panel":
+        ptype = (args.get("type") or "").strip()
+        if not ptype:
+            return JSONResponse(status_code=400, content={"error": "missing type"})
+        # Use agents to create as needed
+        doc_id = STATE.get("meta", {}).get("doc_id")
+        if not doc_id or doc_id not in DOC_INDEXES:
+            return JSONResponse(status_code=400, content={"error": "No document uploaded yet"})
+        index = DOC_INDEXES[doc_id]
+        mapping = {
+            "form_spending": lambda: run_spending_checker(doc_id, index, "spending"),
+            "approval_chain": lambda: run_approval_chain(doc_id, index, "approval chain"),
+            "exceptions_tracker": lambda: run_exceptions_tracker(doc_id, index, "exceptions"),
+        }
+        if ptype not in mapping:
+            return JSONResponse(status_code=400, content={"error": "unsupported panel type"})
+        result = mapping[ptype]()
+        patches = result.get("patches") or []
+        if patches:
+            await broadcast("TOOL_RESULT", {"name":"tool.result","tool":"open.panel","created":ptype})
+            return await apply_patch(PatchRequest(ops=[PatchOp(**op) for op in patches]))
+        return {"ok": True}
+
+    return JSONResponse(status_code=400, content={"error": "unhandled tool"})
 
 
 def _ops_touch_prefix(ops: List[Dict[str, Any]], prefix: str) -> bool:
@@ -374,8 +609,197 @@ async def debug_last():
 async def stream(request: Request):
     client = Client()
     async with clients_lock:
+        if len(clients) >= MAX_SSE_CLIENTS:
+            try:
+                # drop an arbitrary existing client to respect cap
+                clients.discard(next(iter(clients)))
+            except Exception:
+                pass
         clients.add(client)
     return EventSourceResponse(sse_generator(client))
+
+
+@app.post("/agui/run")
+async def agui_run(request: Request):
+    """
+    Proxy AG-UI run calls to a LangGraph deployment and stream SSE back to the client.
+    Configure target via env var LANGGRAPH_RUN_URL.
+    """
+    # Resolve run URL once (prefer configured; fallback to local /agent)
+    run_url = LANGGRAPH_RUN_URL or f"http://127.0.0.1:{os.getenv('PORT','8000')}/agent"
+
+    try:
+        data = await request.json()
+    except Exception:
+        data = None
+    # Normalize to RunAgentInputModel
+    try:
+        if not isinstance(data, dict):
+            data = {}
+        if "messages" not in data and (data.get("prompt") or data.get("message") or data.get("text")):
+            text = data.get("prompt") or data.get("message") or data.get("text")
+            data = {"messages": [{"role": "user", "content": str(text)}]}
+        RunAgentInputModel(**data)
+    except Exception as e:
+        return StreamingResponse((chunk for chunk in [b"event: ERROR\n" + b"data: \"invalid RunAgentInput\"\n\n"]))
+
+    # ---- Build a semantic cache key (intent + doc + top chunks + normalized prompt) ----
+    key = None
+    try:
+        messages = (data or {}).get("messages") if isinstance(data, dict) else None
+        last_msg = None
+        if isinstance(messages, list) and messages:
+            # pick last user message
+            for m in reversed(messages):
+                if isinstance(m, dict) and (m.get("role") or "").lower() == "user":
+                    last_msg = (m.get("content") or "").strip()
+                    break
+        norm_prompt = " ".join((last_msg or "").lower().split())
+        intent = detect_intent(norm_prompt)
+        doc_id = (STATE.get("meta", {}) or {}).get("doc_id")
+        top_ids: List[str] = []
+        if isinstance(doc_id, str) and doc_id in DOC_INDEXES and norm_prompt:
+            try:
+                idx = DOC_INDEXES[doc_id]
+                # use the prompt directly; fallback to intent label if empty
+                base_q = norm_prompt or intent
+                # adaptive k: start small, can increase based on simple heuristics later
+                k = 6
+                for c in idx.top_k(base_q, k=k):
+                    top_ids.append(c.id)
+            except Exception:
+                top_ids = []
+        # include bucketing snapshot of controls to widen hit rate
+        ctl = _controls_bucket_snapshot(STATE)
+        key_obj = {"intent": intent, "doc": doc_id, "ids": top_ids, "prompt": norm_prompt, "controls": ctl}
+        key = json.dumps(key_obj, sort_keys=True)
+    except Exception:
+        # fallback to raw body key
+        if isinstance(data, dict):
+            try:
+                key = json.dumps(data, sort_keys=True)
+            except Exception:
+                key = None
+    # Thread memory/context enrichment
+    try:
+        model = RunAgentInputModel(**(data or {}))
+        tid = model.threadId or "default"
+        mem = THREAD_MEMORY.setdefault(tid, {"hints": [], "last": None})
+        # Attach context hint
+        hint = _thread_context_summary()
+        if hint:
+            data.setdefault("context", [])
+            data["context"].append({"role": "system", "content": hint})
+        # Track last user
+        if model.messages:
+            last_user = next((m for m in reversed(model.messages) if (m.role or "").lower() == "user"), None)
+            if last_user:
+                mem["last"] = last_user.content
+    except Exception:
+        pass
+
+    now = time.time()
+    if key and key in RUN_CACHE:
+        entry = RUN_CACHE.get(key) or {}
+        if now - float(entry.get("ts", 0)) <= CACHE_TTL_SECS:
+            saved = int(entry.get("saved_est", 0))
+            async def replay():
+                buf: bytes = entry.get("bytes", b"")
+                # Return the exact cached SSE content
+                yield buf
+            # Update global saved counter (best-effort)
+            try:
+                global TOKENS_SAVED_EST
+                TOKENS_SAVED_EST += float(saved)
+            except Exception:
+                pass
+            return StreamingResponse(replay(), media_type="text/event-stream", headers={
+                "X-AGUI-Cache": "HIT",
+                "X-AGUI-Saved-Est": str(saved)
+            })
+
+    async def proxy_stream():
+        async with httpx.AsyncClient(timeout=None, limits=httpx.Limits(max_connections=20, max_keepalive_connections=0)) as client:
+            try:
+                async with client.stream("POST", run_url, json=data, headers={"Connection":"close"}) as resp:
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        payload = {"status": resp.status_code, "body": body.decode("utf-8", "ignore")}
+                        yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+                        return
+                    # Accumulate for caching and inspect usage events
+                    buffer = bytearray()
+                    decoder = None
+                    try:
+                        decoder = httpx.Decoder()
+                    except Exception:
+                        decoder = None
+                    start_ts = time.time()
+                    saw_tool = False
+                    async for chunk in resp.aiter_bytes():
+                        if not chunk:
+                            continue
+                        # enforce latency cap
+                        if (time.time() - start_ts) > MAX_RUN_SECONDS:
+                            yield b"event: INFO\n" + b"data: {\"reason\":\"time_cap\"}\n\n"
+                            return
+                        buffer.extend(chunk)
+                        # Pass through SSE from LangGraph unchanged
+                        yield chunk
+                        # Try to capture usage events of form: "event: USAGE" with JSON tokens
+                        try:
+                            text = chunk.decode("utf-8", "ignore")
+                            if "event:" in text and "data:" in text:
+                                blocks = text.split("\n\n")
+                                for blk in blocks:
+                                    if not blk.strip():
+                                        continue
+                                    ev = None; dt = None
+                                    for line in blk.split("\n"):
+                                        if line.startswith("event:"):
+                                            ev = line[6:].strip().lower()
+                                        elif line.startswith("data:"):
+                                            dt = line[5:].strip()
+                                    if EARLY_STOP_ON_TOOL and ev in ("tool_result", "tool", "ui_card"):
+                                        saw_tool = True
+                                    if EARLY_STOP_ON_TOOL and saw_tool:
+                                        yield b"event: INFO\n" + b"data: {\"reason\":\"early_stop_tool\"}\n\n"
+                                        return
+                                    if ev in ("usage", "llm_usage") and dt:
+                                        try:
+                                            obj = json.loads(dt)
+                                            used = float(obj.get("total_tokens") or obj.get("total") or 0)
+                                            if used:
+                                                global TOKENS_USED_REPORTED
+                                                TOKENS_USED_REPORTED += used
+                                        except Exception:
+                                            pass
+                        except Exception:
+                            pass
+                    # end for
+                    # Store in cache
+                    try:
+                        if key is not None:
+                            inp_est = _estimate_input_tokens(data)
+                            out_est = int(len(buffer) / 4)
+                            RUN_CACHE[key] = {"bytes": bytes(buffer), "ts": time.time(), "saved_est": inp_est + out_est}
+                    except Exception:
+                        pass
+            except Exception as e:
+                payload = {"status": 502, "body": f"proxy_failure: {type(e).__name__}: {e}"}
+                yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+
+    return StreamingResponse(proxy_stream(), media_type="text/event-stream", headers={"X-AGUI-Cache": "MISS"})
+
+
+@app.get("/metrics/tokens")
+async def token_metrics():
+    return {
+        "saved_tokens_est": TOKENS_SAVED_EST,
+        "used_tokens_reported": TOKENS_USED_REPORTED,
+        "cache_entries": len(RUN_CACHE),
+        "cache_ttl_secs": CACHE_TTL_SECS,
+    }
 
 
 @app.post("/ingest/upload")
@@ -719,9 +1143,9 @@ class ChatAskRequest(BaseModel):
 @app.post("/chat/ask")
 async def chat_ask(request: Request):
     """
-    Flexible chat endpoint:
-    Accepts {"prompt":"..."} or {"message":"..."} or {"text":"..."}.
-    Applies agent patches; broadcasts only if the new state validates.
+    AG-UI compliant chat run: accepts RunAgentInput-like payload or {prompt} and streams events
+    via the same path as /agui/run. This enables HttpAgent clients to call legacy chat path
+    without JSON responses.
     """
     try:
         data = await request.json()
@@ -730,82 +1154,47 @@ async def chat_ask(request: Request):
     except Exception as e:
         return JSONResponse(status_code=422, content={"error": f"Invalid JSON: {e}"})
 
-    prompt_raw = data.get("prompt") or data.get("message") or data.get("text")
-    prompt = (prompt_raw or "").strip()
-    if not prompt:
-        return JSONResponse(status_code=422, content={"error": "Missing 'prompt' string"})
+    # Normalize to RunAgentInput
+    if "messages" not in data:
+        prompt_raw = data.get("prompt") or data.get("message") or data.get("text")
+        if not prompt_raw:
+            return JSONResponse(status_code=422, content={"error": "Missing 'messages' or 'prompt'"})
+        data = {"messages": [{"role": "user", "content": str(prompt_raw)}]}
 
-    doc_id = STATE.get("meta", {}).get("doc_id")
-    if not doc_id or doc_id not in DOC_INDEXES:
-        return JSONResponse(status_code=400, content={"error": "No document uploaded yet"})
-
-    index = DOC_INDEXES[doc_id]
-
+    # Inject available tools schema
     try:
-        intent = detect_intent(prompt)
-        if intent == "spending":
-            result = run_spending_checker(doc_id, index, prompt)
-        elif intent == "roles_sod":
-            result = run_roles_sod(doc_id, index, prompt)
-        elif intent == "approval_chain":
-            result = run_approval_chain(doc_id, index, prompt)
-        elif intent == "controls":
-            result = run_control_checklists(doc_id, index, prompt)
-        elif intent == "exceptions":
-            result = run_exceptions_tracker(doc_id, index, prompt)
-        else:
-            result = {
-                "patches": [],
-                "message": (
-                    "I can create panels for:\n"
-                    "• Spending Checker\n"
-                    "• Roles & SoD\n"
-                    "• Approval Chain\n"
-                    "• Control Calendar & Checklists\n"
-                    "• Exceptions & Waiver Tracker\n\n"
-                    "Try: “Spending checker”, “Roles & SoD”, “Approval chain”, "
-                    "“Control calendar”, or “Exceptions tracker”."
-                ),
-            }
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": f"Agent failed: {type(e).__name__}: {e}"})
-
-
-    patches = result.get("patches") or []
-
-    try:
-        async with STATE_LOCK:
-            base = json.loads(json.dumps(STATE))
-            patched = jsonpatch.apply_patch(base, patches, in_place=False)
-            validated_model = _validate_state(patched)   
-            new_state = validated_model.model_dump()
-            new_state["meta"]["server_timestamp"] = time.time()
-            server_op = {"op": "replace", "path": "/meta/server_timestamp", "value": new_state["meta"]["server_timestamp"]}
-            for k in list(STATE.keys()):
-                STATE[k] = new_state[k]
-    except Exception as e:
-        global LAST_ERROR
-        LAST_ERROR = {"type": "chat_ask_apply", "detail": str(e), "patches": patches}
-        return JSONResponse(status_code=500, content={"error": f"State update failed: {type(e).__name__}: {e}"})
-
-    await broadcast("STATE_DELTA", {"ops": patches + [server_op]})
-
-    if result.get("message"):
-        await broadcast("TOOL_RESULT", {"name": "chat_message", "message": result["message"]})
-
-    # Provide actionable suggestions/buttons for the UI
-    try:
-        suggestions = [
-            {"label": "Open Control Calendar", "kind": "chat", "prompt": "control calendar"},
-            {"label": "Open Exceptions Tracker", "kind": "chat", "prompt": "exceptions"},
-            {"label": "Open Approval Chain", "kind": "chat", "prompt": "approval chain"},
-            {"label": "Export CSV", "kind": "export"},
-        ]
-        await broadcast("TOOL_RESULT", {"name": "action_items", "items": suggestions})
+        tools = []
+        for t in TOOLS.values():
+            tools.append({
+                "name": t.name,
+                "description": t.description or t.title,
+                "parameters": t.schema or {"type": "object", "properties": {}}
+            })
+        data.setdefault("tools", tools)
     except Exception:
         pass
 
-    return {"ok": True}
+    # Forward to AG-UI run proxy (keeps caching/limits)
+    port = os.getenv("PORT", "8000")
+    run_url = f"http://127.0.0.1:{port}/agui/run"
+
+    async def stream_forward():
+        async with httpx.AsyncClient(timeout=None) as client:
+            try:
+                async with client.stream("POST", run_url, json=data) as resp:
+                    if resp.status_code != 200:
+                        body = await resp.aread()
+                        payload = {"status": resp.status_code, "body": body.decode("utf-8", "ignore")}
+                        yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+                        return
+                    async for chunk in resp.aiter_bytes():
+                        if chunk:
+                            yield chunk
+            except Exception as e:
+                payload = {"status": 502, "body": f"proxy_failure: {type(e).__name__}: {e}"}
+                yield b"event: ERROR\n" + b"data: " + json.dumps(payload).encode("utf-8") + b"\n\n"
+
+    return StreamingResponse(stream_forward(), media_type="text/event-stream")
 
 
 # ---------- end chat routes ----------
