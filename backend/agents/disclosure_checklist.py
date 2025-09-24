@@ -58,7 +58,15 @@ def run_disclosure_checklist(doc_id: str, index: Any, prompt: str) -> Dict[str, 
     citations: List[Dict[str, Any]] = []
     for ch in chunks:
         snippets.append(ch.text[:2000])
-        citations.append({"key": ch.id, "snippet": ch.text[:240]})
+        # source namespace from composite id: "enterprise:file::chunk_1" or "customer:file::chunk_7"
+        src = "unknown"
+        try:
+            prefix = ch.id.split(":", 1)[0]
+            if prefix in ("enterprise", "customer"):
+                src = prefix
+        except Exception:
+            pass
+        citations.append({"key": ch.id, "source": src, "snippet": ch.text[:240]})
 
     questions = _suggest_questions_from_text(snippets)
 
@@ -75,6 +83,7 @@ def run_disclosure_checklist(doc_id: str, index: Any, prompt: str) -> Dict[str, 
         },
         "data": {
             "questions": questions,
+            "citations": citations,
         },
     }
 
